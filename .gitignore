@@ -1,0 +1,23 @@
+# Data never goes in git
+data/
+logs/
+*.parquet
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+renv/library/
+renv/staging/
+
+# Secrets
+.env
+.Renviron
+
+# Local tooling and notes
+.claude/
+CLAUDE.md
+docs/
+
+# OS
+.DS_Store

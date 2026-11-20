@@ -1,0 +1,29 @@
+{
+  "totalGames": 3,
+  "dates": [
+    {
+      "date": "2030-06-01",
+      "games": [
+        {
+          "gamePk": 900001, "gameDate": "2030-06-01T23:05:00Z", "officialDate": "2030-06-01",
+          "gameType": "R", "doubleHeader": "N", "gameNumber": 1,
+          "status": {"abstractGameState": "Final", "codedGameState": "F", "detailedState": "Final"},
+          "venue": {"id": 1001, "name": "Test Park"},
+          "weather": {"condition": "Partly Cloudy", "temp": "81", "wind": "7 mph, Out To CF"}
+        },
+        {
+          "gamePk": 900002, "gameDate": "2030-06-01T17:05:00Z", "officialDate": "2030-06-01",
+          "gameType": "R", "doubleHeader": "N", "gameNumber": 1,
+          "status": {"abstractGameState": "Final", "codedGameState": "D", "detailedState": "Postponed"},
+          "venue": {"id": 1002, "name": "Other Park"}
+        },
+        {
+          "gamePk": 900003, "gameDate": "2030-06-01T18:10:00Z", "officialDate": "2030-06-01",
+          "gameType": "R", "doubleHeader": "S", "gameNumber": 2,
+          "status": {"abstractGameState": "Final", "codedGameState": "O", "detailedState": "Game Over"},
+          "venue": {"id": 1002, "name": "Other Park"}
+        }
+      ]
+    }
+  ]
+}

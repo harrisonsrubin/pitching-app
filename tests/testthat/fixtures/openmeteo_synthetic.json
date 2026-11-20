@@ -1,0 +1,10 @@
+{
+  "latitude": 40.1, "longitude": -75.2, "timezone": "GMT", "elevation": 20.0,
+  "hourly_units": {"time": "iso8601", "temperature_2m": "°C", "relative_humidity_2m": "%", "surface_pressure": "hPa"},
+  "hourly": {
+    "time": ["2030-07-01T22:00", "2030-07-01T23:00", "2030-07-02T00:00"],
+    "temperature_2m": [31.0, 30.0, 25.0],
+    "relative_humidity_2m": [38, 40, 50],
+    "surface_pressure": [1009.5, 1010.0, null]
+  }
+}

@@ -1,0 +1,72 @@
+venue_id,level,first_season,last_season,venue_name,lat,lon,elevation_ft,roof_type,azimuth_deg,elevation_source
+1,MLB,2020,2026,Angel Stadium,33.80019044,-117.8823996,151,Open,43.61,statsapi
+2,MLB,2020,2026,Oriole Park at Camden Yards,39.283787,-76.621689,33,Open,31,statsapi
+3,MLB,2020,2026,Fenway Park,42.346456,-71.097441,21,Open,45,statsapi
+4,MLB,2020,2026,Rate Field,41.83,-87.634167,595,Open,127,statsapi
+5,MLB,2020,2026,Progressive Field,41.495861,-81.685255,653,Open,0,statsapi
+7,MLB,2020,2026,Kauffman Stadium,39.051567,-94.480483,856,Open,46,statsapi
+10,MLB,2020,2024,Oakland Coliseum,37.751511,-122.200698,10,Open,55,statsapi
+12,MLB,2020,2026,Tropicana Field,27.767778,-82.6525,15,Dome,359,statsapi
+14,MLB,2021,2026,Rogers Centre,43.64155,-79.38915,270,Retractable,345,statsapi
+15,MLB,2020,2026,Chase Field,33.445302,-112.066687,1086,Retractable,0,statsapi
+17,MLB,2020,2026,Wrigley Field,41.948171,-87.655503,595,Open,37,statsapi
+19,MLB,2020,2026,Coors Field,39.756042,-104.994136,5190,Open,4,statsapi
+22,MLB,2020,2026,UNIQLO Field at Dodger Stadium,34.07368,-118.24053,515,Open,26,statsapi
+31,MLB,2020,2026,PNC Park,40.446904,-80.005753,780,Open,116,statsapi
+32,MLB,2020,2026,American Family Field,43.02838,-87.97099,597,Retractable,129,statsapi
+680,MLB,2020,2026,T-Mobile Park,47.591333,-122.33251,10,Retractable,49,statsapi
+2392,MLB,2020,2026,Daikin Park,29.756967,-95.355509,45,Retractable,343,statsapi
+2394,MLB,2020,2026,Comerica Park,42.3391151,-83.048695,600,Open,150,statsapi
+2395,MLB,2020,2026,Oracle Park,37.778383,-122.389448,0,Open,85,statsapi
+2397,MLB,2025,2025,Tokyo Dome,35.7056,139.7519,22.96588,Dome,,open-meteo
+2523,MLB,2025,2025,George M. Steinbrenner Field,27.97997,-82.50702,34,Open,60,statsapi
+2528,AAA,2023,2026,Dell Diamond,30.527463,-97.630397,672.5722,Open,,open-meteo
+2529,both,2023,2026,Sutter Health Park,38.57994,-121.51246,24,Open,46,statsapi
+2536,MLB,2021,2021,TD Ballpark,27.9745812,-82.7913301,19,Open,138,statsapi
+2541,AAA,2023,2026,Durham Bulls Athletic Park,35.99158,-78.90401,364.17324,Open,,open-meteo
+2542,AAA,2023,2026,AutoZone Park,35.14297,-90.04924,252.62468,Open,,open-meteo
+2602,MLB,2020,2026,Great American Ball Park,39.097389,-84.506611,535,Open,122,statsapi
+2680,MLB,2020,2026,Petco Park,32.707861,-117.157278,23,Open,0,statsapi
+2681,MLB,2020,2026,Citizens Bank Park,39.90539086,-75.16716957,20,Open,9,statsapi
+2683,AAA,2023,2026,Isotopes Park,35.06985,-106.62802,5118.1104,Open,,open-meteo
+2724,AAA,2023,2026,Louisville Slugger Field,38.2557199,-85.74479,469.16012,Open,,open-meteo
+2735,MLB,2021,2026,Journey Bank Ballpark,41.2419845,-77.0475104,518.37272,Open,,open-meteo
+2745,AAA,2023,2026,Cheney Stadium,47.237981,-122.497643,337.92652,Open,,open-meteo
+2756,both,2020,2026,Sahlen Field,42.880772,-78.873955,585,Open,157,statsapi
+2767,AAA,2023,2026,Fifth Third Field,41.64767,-83.53838,580.70868,Open,,open-meteo
+2772,AAA,2023,2024,Smith's Ballpark,40.74109,-111.89256,4238.84528,Open,,open-meteo
+2773,AAA,2023,2026,ESL Ballpark,43.158301,-77.619748,488.84516,Open,,open-meteo
+2781,AAA,2023,2026,Harbor Park,36.84265,-76.27803,16.4042,Open,,open-meteo
+2797,AAA,2023,2026,PNC Field,41.360672,-75.683676,869.4226,Open,,open-meteo
+2823,AAA,2023,2026,NBT Bank Stadium,43.079531,-76.165419,374.01576,Open,,open-meteo
+2843,AAA,2023,2026,Chickasaw Bricktown Ballpark,35.46511,-97.50762,1190.94492,Open,,open-meteo
+2844,AAA,2023,2026,Principal Park,41.57998,-93.61619,807.08664,Open,,open-meteo
+2852,AAA,2023,2026,Vystar Ballpark,30.32533,-81.64256,16.4042,Open,,open-meteo
+2858,AAA,2023,2026,Victory Field,39.7657354,-86.1682918,718.50396,Open,,open-meteo
+2889,MLB,2020,2026,Busch Stadium,38.62256667,-90.19286667,460,Open,62,statsapi
+3230,AAA,2023,2026,Jefferson Park,40.625318300000004,-75.4516154,360.8924,Open,,open-meteo
+3289,MLB,2020,2026,Citi Field,40.75753012,-73.84559155,10,Open,13,statsapi
+3309,MLB,2020,2026,Nationals Park,38.872861,-77.007501,35,Open,28,statsapi
+3312,MLB,2020,2026,Target Field,44.981829,-93.277891,828,Open,129,statsapi
+3313,MLB,2020,2026,Yankee Stadium,40.82919482,-73.9264977,55,Open,75,statsapi
+3789,AAA,2023,2026,Greater Nevada Field,39.52812,-119.80901,4504.59332,Open,,open-meteo
+3810,AAA,2023,2026,Gwinnett Field,34.0409586,-83.9937909,1076.11552,Open,,open-meteo
+3949,MLB,2024,2024,Rickwood Field,33.5023303,-86.8563555,554.46196,Open,,open-meteo
+3970,AAA,2023,2026,Huntington Park,39.96868,-83.01102,738.189,Open,,open-meteo
+4169,MLB,2020,2026,loanDepot park,25.77796236,-80.21951795,10,Retractable,128,statsapi
+4271,AAA,2023,2026,Werner Park,41.1510945,-96.1057988,1141.73232,Open,,open-meteo
+4669,AAA,2023,2026,Southwest University Park,31.759277,-106.492526,3779.52768,Open,,open-meteo
+4670,AAA,2023,2026,Truist Field,35.22781,-80.84823,725.06564,Open,,open-meteo
+4705,MLB,2020,2026,Truist Park,33.890672,-84.467641,1001,Open,145,statsapi
+4715,AAA,2023,2026,First Horizon Park,36.173218,-86.785171,419.94752,Open,,open-meteo
+5150,MLB,2024,2024,Gocheok Sky Dome,37.4982,126.867,52.49344,Dome,,open-meteo
+5325,MLB,2020,2026,Globe Life Field,32.747299,-97.081818,545,Retractable,30,statsapi
+5340,MLB,2023,2026,Estadio Alfredo Harp Helu,19.4036,-99.0847,7349,Open,,override
+5355,both,2023,2026,Las Vegas Ballpark,36.152607,-115.329888,3018.3728,Open,,open-meteo
+5381,MLB,2023,2024,London Stadium,51.50853,-0.12574,75.45932,Open,,open-meteo
+5410,AAA,2023,2026,Polar Park,42.25606,-71.80028,452.75592,Open,,open-meteo
+5421,AAA,2023,2026,Constellation Field,29.62275645,-95.64718344,85.30184,Open,,open-meteo
+5445,both,2021,2026,Field of Dreams,42.498241,-91.056486,994.09452,Open,,open-meteo
+5472,AAA,2023,2026,CHS Field,44.95089651,-93.08457526,741.46984,Open,,open-meteo
+6130,MLB,2025,2025,Bristol Motor Speedway,31.5156,-82.5269,183.72704,Open,,open-meteo
+6135,AAA,2025,2026,The Ballpark at America First Square,40.549066970052124,-112.02301999999999,4891.73244,Open,,open-meteo

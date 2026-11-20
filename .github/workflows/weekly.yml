@@ -1,0 +1,29 @@
+name: weekly
+
+# Off-season (November-February), Mondays at 11:00 UTC: refresh Stats API data
+# for the current season and year (transactions keep coming in the off-season).
+# Past seasons never change and are not refetched.
+on:
+  schedule:
+    - cron: "0 11 * 11,12,1,2 1"
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ secrets.PV_DATA_TOKEN }}
+      PV_DATA_REPO: ${{ secrets.PV_DATA_REPO }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-renv@v2
+      - name: Tests
+        run: Rscript tests/testthat.R
+      - name: Refresh Stats API data
+        run: Rscript scripts/backfill_statsapi.R current
+      - name: Upload
+        run: Rscript scripts/sync_store.R upload raw/statsapi

@@ -290,3 +290,10 @@ Every phase publishes its scorecard section. P1 has a fixed iteration window to 
 ## Data and terms
 
 This repository contains code and derived, aggregated outputs only. Raw pitch-level data is fetched from public sources at run time and is not redistributed.
+
+## Running the tests
+
+```bash
+Rscript -e "renv::restore()"   # first time only
+Rscript tests/testthat.R
+```

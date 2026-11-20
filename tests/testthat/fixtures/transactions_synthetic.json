@@ -1,0 +1,14 @@
+{
+  "transactions": [
+    {"id": 1, "person": {"id": 7001}, "toTeam": {"id": 501}, "date": "2030-06-01", "typeCode": "SC",
+     "description": "Test Team placed RHP Test One on the 15-day injured list retroactive to May 29, 2030. Right shoulder inflammation."},
+    {"id": 2, "person": {"id": 7001}, "toTeam": {"id": 501}, "date": "2030-06-20", "typeCode": "SC",
+     "description": "Test Team activated RHP Test One from the 15-day injured list."},
+    {"id": 3, "person": {"id": 7002}, "toTeam": {"id": 502}, "date": "2030-06-21", "typeCode": "SC",
+     "description": "Test Team transferred LHP Test Two from the 15-day injured list to the 60-day injured list."},
+    {"id": 4, "person": {"id": 7003}, "toTeam": {"id": 503}, "date": "2030-06-22", "typeCode": "OPT",
+     "description": "Test Team optioned RHP Test Three to Test AAA Team."},
+    {"id": 5, "toTeam": {"id": 503}, "date": "2030-06-23", "typeCode": "SC",
+     "description": "Test Team announced something without a player."}
+  ]
+}

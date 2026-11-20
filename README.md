@@ -253,8 +253,8 @@ Pre-arbitration pitchers carry the largest surplus, and many pitched in Triple-A
 - Shiny (R), built in modules. Pages: Grades, Movement, Location, Pitch-Type Editor, Leaderboard, Stuff Map, Command & Tunneling, Rolling, Scouting Report, Scorecard, plus new **Value**, **What-If**, **Team Fit**, and **Payroll Optimizer** pages.
 - Loads published outputs at startup; pitch-level display data loads per pitcher and season from the private store.
 - A level filter (MLB / Triple-A / both).
-- **Admin editing:** read-only by default; an admin password unlocks the Pitch-Type Editor and the Contracts editor; saving commits the CSV to this repo through the GitHub API with a narrowly scoped token. Edits apply immediately in the session and fully at the next pipeline run.
-- **Hosting:** Posit Connect Cloud (deploys from this repo); Hugging Face Spaces as a fallback.
+- **Admin editing:** read-only by default; an admin password unlocks the Pitch-Type Editor and the Contracts editor; saving commits the CSV to this repo through the GitHub API with a narrowly scoped token. Edits apply immediately in the session; the `rescore` workflow rebuilds each edited season (about 30 minutes).
+- **Hosting:** Posit Connect Cloud, deploying `app/` from the **`deploy` branch**; Hugging Face Spaces as a fallback. The `deploy` workflow fast-forwards `deploy` to `main` only when `app/` or `renv.lock` changes, so tag saves (commits to `main`) never restart the app. Because the app commits to `main`, run `git pull` before committing locally.
 
 ## 11. Repo layout
 
@@ -320,3 +320,24 @@ Rscript scripts/build_scorecard.R final           # scorecard/p1.md + chart
 **P1 notes (2026-11-20).**
 - With the automated ball-strike system, Statcast reports MLB 2026 and Triple-A 2023–2026 plate locations at the middle of the plate and the strike zone as the ABS height zone. `R/zone.R` converts everything to the front of the plate and to one per-batter zone on the 2023–2025 scale.
 - Grades are scored by models that never saw the pitcher, so they measure the pitch, not the pitcher's results. Prediction against Marcel and Pitching+ is judged at P3, where the projection combines grades with results (see `scorecard/p1.md`).
+
+## Running P2 (app and deploy)
+
+The pipeline now rebuilds one level-season at a time, with the grade anchors frozen:
+
+```bash
+Rscript scripts/update_season.R MLB 2026     # compact -> weather -> prepare -> features -> score -> grades -> index -> display (~10 min)
+Rscript scripts/build_outputs.R MLB 2020 2025   # grades, index and display from stored features + xRV (no re-preparing)
+Rscript scripts/publish.R season MLB 2026    # outputs -> public "outputs" release; display -> private store
+Rscript scripts/publish.R scorecard          # scorecard page files
+```
+
+Run the app locally on the local data store:
+
+```bash
+PV_APP_LOCAL=1 PV_DATA_DIR=$PWD/data Rscript -e 'shiny::runApp("app", port = 8123)'
+```
+
+The app's environment variables (set in Connect Cloud, never committed): `PV_APP_REPO`, `PV_DATA_REPO`, `PV_DATA_TOKEN` (read-only, private data repo), `PV_CORRECTIONS_TOKEN` (contents read/write on this repo), `PV_ADMIN_HASH` (from `Rscript scripts/hash_password.R`). After changing app packages, regenerate `app/manifest.json` with `Rscript -e 'rsconnect::writeManifest("app", appPrimaryDoc = "app.R")'`.
+
+Workflows: `nightly` (in season) also rebuilds and publishes the current season; `rescore` runs on pushes to `corrections/**` and rebuilds every season edited since its last success; `deploy` updates the `deploy` branch. The current season rolls over by itself once its first game is played (`R/seasons.R`); 2027 is scored with the boosters trained on 2023–2026.

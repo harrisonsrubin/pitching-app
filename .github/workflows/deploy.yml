@@ -1,0 +1,23 @@
+name: deploy
+
+# Posit Connect Cloud republishes the app from the "deploy" branch. Fast-forward it to
+# main only when app code changes, so pitch-type saves (which commit corrections to
+# main) never restart the live app. A non-fast-forward push fails loudly.
+on:
+  push:
+    branches: [main]
+    paths: ["app/**", "renv.lock"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fast-forward deploy to main
+        run: git push origin HEAD:deploy

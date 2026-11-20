@@ -119,3 +119,27 @@ grade_rows <- function(fit, anchors, facet) {
     grade_hi80 = to_grade(bp$est - Z80 * bp$se, pi_$mean, pi_$unit))
   dplyr::bind_rows(type_rows, all_rows)
 }
+
+GRADE_FACETS <- c("stuff", "location", "pitching")
+
+read_anchors <- function() {
+  readr::read_csv(file.path(repo_root(), "models", "grade_anchors.csv"), show_col_types = FALSE,
+                  col_types = readr::cols(facet = "c", scope = "c", pitch_type = "c", mean = "d", unit = "d"))
+}
+
+# Grades and component rates for one level-season on fixed anchors: full season, plus
+# odd/even game halves for MLB (split-half reliability). `fits` optionally supplies
+# already-computed full-season fits by facet.
+grade_season <- function(x, level, season, anchors, fits = NULL) {
+  x$half <- game_half(x)
+  halves <- if (level == "MLB") c("full", "odd", "even") else "full"
+  grades <- dplyr::bind_rows(lapply(halves, function(h) {
+    xs <- if (h == "full") x else x[x$half == h, ]
+    dplyr::bind_rows(lapply(GRADE_FACETS, function(f) {
+      fit <- if (h == "full" && !is.null(fits[[f]])) fits[[f]] else fit_grades(xs, paste0(f, "_xrv"))
+      grade_rows(fit, anchors, f)
+    })) %>% dplyr::mutate(half = h)
+  })) %>% dplyr::mutate(level = level, season = as.integer(season), .before = 1)
+  components <- dplyr::mutate(component_rates(x), level = level, season = as.integer(season), .before = 1)
+  list(grades = grades, components = components)
+}

@@ -1,8 +1,8 @@
 test_that("cfg has the spec's seasons and sport ids", {
   c <- cfg()
-  expect_equal(c$seasons_mlb, 2020:2026)
-  expect_equal(c$seasons_aaa, 2023:2026)
-  expect_equal(c$seasons_stats, 2010:2026)
+  expect_equal(c$seasons_mlb, 2020:last_season())
+  expect_equal(c$seasons_aaa, 2023:last_season())
+  expect_equal(c$seasons_stats, 2010:last_season())
   expect_equal(c$sport_ids, c(MLB = 1L, AAA = 11L))
   expect_false(grepl("@", c$user_agent))
 })
@@ -21,7 +21,7 @@ test_that("the loader defines %>% itself, so scripts work without testthat", {
 
 test_that("P1 config values", {
   c0 <- cfg()
-  expect_equal(c0$seasons_train, 2023:2026)
+  expect_equal(c0$seasons_train, 2023:last_season())
   expect_equal(c0$seasons_ref, 2023:2025)
   expect_equal(c0$n_folds, 5L)
   expect_equal(c0$lgb_params$num_threads, 6L)

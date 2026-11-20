@@ -35,3 +35,17 @@ test_that("open-meteo request asks for GMT and the three hourly variables", {
   expect_equal(r$query$hourly, "temperature_2m,relative_humidity_2m,surface_pressure")
   expect_equal(r$query$start_date, "2030-04-01")
 })
+
+test_that("daily weather overrides the season file and adds new games", {
+  withr::local_envvar(PV_DATA_DIR = withr::local_tempdir())
+  row <- function(pk, t, d) tibble::tibble(game_pk = pk, game_date = as.Date(d), venue_id = 1L,
+                                           first_pitch_utc = as.POSIXct(paste(d, "23:00:00"), tz = "UTC"),
+                                           temp_c = t, rh_pct = 50, pressure_hpa = 1000)
+  store_write(dplyr::bind_rows(row(1L, 10, "2026-04-01"), row(2L, NA, "2026-04-02")), game_weather_key("MLB", 2026))
+  store_write(row(2L, 20, "2026-04-02"), "raw/weather/daily/MLB/2026-04-02.parquet")
+  store_write(row(3L, 25, "2026-04-03"), "raw/weather/daily/MLB/2026-04-03.parquet")
+  store_write(row(9L, 5, "2025-09-03"), "raw/weather/daily/MLB/2025-09-03.parquet")
+  w <- assemble_season_weather("MLB", 2026L)
+  expect_equal(w$game_pk, 1:3)
+  expect_equal(w$temp_c, c(10, 20, 25))
+})

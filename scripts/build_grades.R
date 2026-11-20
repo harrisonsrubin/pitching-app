@@ -19,18 +19,10 @@ readr::write_csv(anchors, file.path(repo_root(), "models", "grade_anchors.csv"))
 levels_seasons <- list(MLB = c0$seasons_mlb, AAA = c0$seasons_aaa)
 for (lv in names(levels_seasons)) for (s in levels_seasons[[lv]]) {
   x <- store_read(xrv_key(lv, s))
-  x$half <- game_half(x)
-  halves <- if (lv == "MLB") c("full", "odd", "even") else "full"
-  out <- dplyr::bind_rows(lapply(halves, function(h) {
-    xs <- if (h == "full") x else x[x$half == h, ]
-    dplyr::bind_rows(lapply(FACETS, function(f) {
-      fit <- if (h == "full" && lv == "MLB" && s %in% c0$seasons_ref) ref_fits[[f]][[as.character(s)]] else
-        fit_grades(xs, paste0(f, "_xrv"))
-      grade_rows(fit, anchors, f)
-    })) %>% dplyr::mutate(half = h)
-  })) %>% dplyr::mutate(level = lv, season = s, .before = 1)
-  store_write(out, grades_key(lv, s))
-  store_write(dplyr::mutate(component_rates(x), level = lv, season = s, .before = 1), components_key(lv, s))
-  message(lv, " ", s, ": ", sum(out$half == "full" & out$pitch_type == "ALL") / length(FACETS), " pitchers graded")
-  rm(x, out); gc()
+  fits <- if (lv == "MLB" && s %in% c0$seasons_ref) lapply(ref_fits, `[[`, as.character(s)) else NULL
+  g <- grade_season(x, lv, s, anchors, fits)
+  store_write(g$grades, grades_key(lv, s))
+  store_write(g$components, components_key(lv, s))
+  message(lv, " ", s, ": ", sum(g$grades$half == "full" & g$grades$pitch_type == "ALL") / length(FACETS), " pitchers graded")
+  rm(x, g); gc()
 }

@@ -11,7 +11,8 @@ test_that("mid-plate locations convert to the front of the plate", {
   expect_equal(out$plate_x, x(tf), tolerance = 1e-9)
 })
 
-test_that("ABS-era data is MLB 2026 and Triple-A 2023-2026", {
+test_that("ABS-era data is MLB 2026 on and Triple-A 2023 on", {
+  expect_true(is_abs_era("MLB", 2027L)); expect_true(is_abs_era("AAA", 2023L))
   expect_true(is_abs_era("MLB", 2026)); expect_false(is_abs_era("MLB", 2025))
   expect_true(all(sapply(2023:2026, function(s) is_abs_era("AAA", s))))
 })

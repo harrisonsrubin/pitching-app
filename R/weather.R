@@ -51,3 +51,15 @@ build_game_weather <- function(schedule, parks) {
   }))
   join_game_weather(dplyr::select(schedule, game_pk, game_date, venue_id, first_pitch_utc), hourly)
 }
+
+# The season's game weather: the backfilled season file plus every nightly daily file
+# of that season; one row per game, daily rows win (they are newer).
+assemble_season_weather <- function(level, season) {
+  base <- if (store_exists(game_weather_key(level, season))) store_read(game_weather_key(level, season)) else NULL
+  days <- store_list(sprintf("raw/weather/daily/%s", level))
+  days <- days[startsWith(basename(days), paste0(season, "-"))]
+  daily <- dplyr::bind_rows(lapply(days, store_read))
+  dplyr::bind_rows(daily, base) %>%
+    dplyr::distinct(game_pk, .keep_all = TRUE) %>%
+    dplyr::arrange(game_pk)
+}

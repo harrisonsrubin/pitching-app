@@ -31,8 +31,14 @@ store_list <- function(prefix) {
 # comes near GitHub's per-release asset limit. Assets keep their file names.
 release_tag <- function(key) gsub("/", "--", dirname(key), fixed = TRUE)
 
-# The one place that shells out to the GitHub CLI, so tests can mock it.
-gh_run <- function(args) system2("gh", args)
+# The one place that shells out to the GitHub CLI, so tests can mock it. `token`
+# overrides GH_TOKEN for one call (publishing to the app repo uses its own token).
+gh_run <- function(args, token = NULL) {
+  if (is.null(token)) system2("gh", args) else system2("gh", args, env = paste0("GH_TOKEN=", token))
+}
+
+# Text output of a gh call (mockable like gh_run).
+gh_output <- function(args) suppressWarnings(system2("gh", args, stdout = TRUE, stderr = FALSE))
 
 ensure_release <- function(repo, tag) {
   if (identical(as.integer(gh_run(c("release", "view", tag, "--repo", repo))), 0L)) return(invisible(tag))
@@ -56,4 +62,14 @@ release_download_dir <- function(prefix, repo) {
   status <- gh_run(c("release", "download", tag, "--repo", repo, "--dir", dest, "--clobber"))
   if (!identical(as.integer(status), 0L)) stop("gh release download failed for ", tag)
   invisible(store_list(prefix))
+}
+
+# Restores one file from its directory's release.
+release_download_file <- function(key, repo) {
+  dest <- dirname(store_path(key))
+  dir.create(dest, recursive = TRUE, showWarnings = FALSE)
+  status <- gh_run(c("release", "download", release_tag(key), "--repo", repo,
+                     "--pattern", basename(key), "--dir", dest, "--clobber"))
+  if (!identical(as.integer(status), 0L)) stop("gh release download failed for ", key)
+  invisible(key)
 }

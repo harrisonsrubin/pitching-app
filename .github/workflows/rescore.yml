@@ -1,0 +1,62 @@
+name: rescore
+
+# A pitch-type edit commits corrections/pitch_corrections_<season>.csv to main; this
+# rebuilds every edited season end to end (corrections change fastball detection and
+# every feature downstream) for each level with data that season, then publishes.
+# Runs queue rather than overlap. GitHub keeps only the newest waiting run, so each run
+# rebuilds every season edited since the last successful rescore, not just its own push.
+on:
+  push:
+    branches: [main]
+    paths: ["corrections/**"]
+  workflow_dispatch:
+    inputs:
+      seasons:
+        description: "Seasons to rebuild, space-separated (e.g. 2025 2026)"
+        required: true
+
+concurrency:
+  group: rescore
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  rescore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      GH_TOKEN: ${{ secrets.PV_DATA_TOKEN }}
+      PV_DATA_REPO: ${{ secrets.PV_DATA_REPO }}
+      PV_APP_REPO: ${{ github.repository }}
+      APP_GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-renv@v2
+      - name: Tests
+        run: Rscript tests/testthat.R
+      - name: Rebuild and publish edited seasons
+        run: |
+          if [ -n "${{ github.event.inputs.seasons }}" ]; then
+            SEASONS="${{ github.event.inputs.seasons }}"
+          else
+            BASE=$(GH_TOKEN=${{ github.token }} gh run list --repo ${{ github.repository }} --workflow rescore.yml \
+                     --status success --limit 1 --json headSha --jq '.[0].headSha // empty')
+            git cat-file -e "${BASE}^{commit}" 2>/dev/null || BASE=${{ github.event.before }}
+            SEASONS=$(Rscript scripts/changed_seasons.R $BASE ${{ github.sha }})
+          fi
+          echo "Seasons: $SEASONS"
+          for S in $SEASONS; do
+            for LV in $(Rscript -e "source('R/load.R'); cat(levels_for($S))"); do
+              Rscript scripts/fetch_inputs.R $LV $S
+              Rscript scripts/update_season.R $LV $S
+              Rscript scripts/publish.R season $LV $S
+            done
+          done

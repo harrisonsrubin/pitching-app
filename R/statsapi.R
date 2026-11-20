@@ -90,3 +90,20 @@ fetch_venues <- function(ids) {
   }))
 }
 
+
+# ── People ────────────────────────────────────────────────────────────────────
+parse_people <- function(json) {
+  p <- json$people %|||% list()
+  tibble::tibble(
+    player_id = vapply(p, function(x) as.integer(x$id), integer(1)),
+    name      = vapply(p, function(x) x$fullName %|||% NA_character_, character(1)),
+    throws    = vapply(p, function(x) x$pitchHand$code %|||% NA_character_, character(1)))
+}
+
+fetch_people <- function(ids, chunk = 150) {
+  ids <- unique(stats::na.omit(as.integer(ids)))
+  if (length(ids) == 0) return(parse_people(list()))
+  groups <- split(ids, ceiling(seq_along(ids) / chunk))
+  dplyr::bind_rows(lapply(groups, function(g)
+    parse_people(statsapi_json("/people", list(personIds = paste(g, collapse = ","))))))
+}

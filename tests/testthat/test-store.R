@@ -44,3 +44,20 @@ test_that("each store directory gets its own release tag, created if missing", {
   expect_true(any(grepl("2026-04-01.parquet", calls[[3]], fixed = TRUE)))
   expect_true("raw--statcast--MLB--2026" %in% calls[[3]])
 })
+
+test_that("release_download_file asks gh for one asset of the key's release", {
+  calls <- list()
+  local_global_binding(gh_run = function(args) { calls[[length(calls) + 1]] <<- args; 0L })
+  withr::local_envvar(PV_DATA_DIR = withr::local_tempdir())
+  release_download_file("raw/statcast/MLB/2026.parquet", repo = "o/p")
+  a <- calls[[1]]
+  expect_equal(a[1:3], c("release", "download", "raw--statcast--MLB"))
+  expect_true(all(c("--pattern", "2026.parquet", "--clobber", "o/p") %in% a))
+  expect_true(dir.exists(store_path("raw/statcast/MLB")))
+})
+
+test_that("release_download_file errors when gh fails", {
+  local_global_binding(gh_run = function(args) 1L)
+  withr::local_envvar(PV_DATA_DIR = withr::local_tempdir())
+  expect_error(release_download_file("raw/x/a.parquet", repo = "o/p"), "gh release download")
+})

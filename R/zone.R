@@ -8,9 +8,9 @@
 # Everything is converted to the front plane and to a per-batter zone on the
 # 2023–2025 posture scale, so the models see one definition.
 
-ABS_ERA <- list(MLB = 2026L, AAA = 2023:2026)
+ABS_ERA <- list(MLB = 2026L, AAA = 2023L)   # first ABS-era season; every later one is too
 
-is_abs_era <- function(level, season) season %in% ABS_ERA[[level]]
+is_abs_era <- function(level, season) season >= ABS_ERA[[level]]
 
 plane_time <- function(vy0, ay, y) {
   a <- ay / 2; c <- 50 - y

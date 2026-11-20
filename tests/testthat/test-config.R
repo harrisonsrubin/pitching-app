@@ -18,3 +18,13 @@ test_that("data_dir defaults to <repo>/data", {
 test_that("the loader defines %>% itself, so scripts work without testthat", {
   expect_true(exists("%>%", envir = globalenv(), inherits = FALSE))
 })
+
+test_that("P1 config values", {
+  c0 <- cfg()
+  expect_equal(c0$seasons_train, 2023:2026)
+  expect_equal(c0$seasons_ref, 2023:2025)
+  expect_equal(c0$n_folds, 5L)
+  expect_equal(c0$lgb_params$num_threads, 6L)
+  expect_true(requireNamespace("lightgbm", quietly = TRUE))
+  expect_true(requireNamespace("lme4", quietly = TRUE))
+})

@@ -1,0 +1,4 @@
+{"data": [
+ {"xMLBAMID": 900001, "Season": 2030, "Name": "Synthetic One", "IP": 6.2, "TBF": 28, "ERA": 3.1, "FIP": 3.4, "xFIP": 3.6, "SIERA": 3.5, "K-BB%": 0.15, "sp_stuff": 104.2, "sp_location": 99.1, "sp_pitching": 101.3},
+ {"xMLBAMID": 900002, "Season": 2030, "Name": "Synthetic Two", "IP": 120.0, "TBF": 500, "ERA": 4.4, "FIP": 4.1, "xFIP": 4.0, "SIERA": 4.2, "K-BB%": 0.08}
+], "totalCount": 2}

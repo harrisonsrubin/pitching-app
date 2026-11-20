@@ -297,3 +297,26 @@ This repository contains code and derived, aggregated outputs only. Raw pitch-le
 Rscript -e "renv::restore()"   # first time only
 Rscript tests/testthat.R
 ```
+
+## Running P1 (pitch models, grades, scorecard)
+
+Run from the repo root, in order. Each script works one level-season at a time and stays under ~2 GB of memory; times are for an 8 GB M-series Mac.
+
+```bash
+Rscript scripts/prepare_pitches.R MLB 2020 2026   # corrections, air density, mirroring, physics, park offsets (~1 min)
+Rscript scripts/prepare_pitches.R AAA 2023 2026
+Rscript scripts/fit_refs.R                        # reference tables -> models/*.csv (MLB 2023–2025)
+Rscript scripts/build_features.R MLB 2020 2026    # features + denoised target (~1 min)
+Rscript scripts/build_features.R AAA 2023 2026
+Rscript scripts/train_models.R forward            # train 2023–2025, test 2026 -> data/reports (~10 min)
+Rscript scripts/train_models.R oof                # 8 models x 5 pitcher folds (~40 min)
+Rscript scripts/score_pitches.R MLB 2020 2026     # every pitch scored by a model that never saw its pitcher
+Rscript scripts/score_pitches.R AAA 2023 2026
+Rscript scripts/build_grades.R                    # 20-80 grades + 80% intervals + component rates (~15 min)
+Rscript scripts/fetch_fangraphs.R 2020 2026       # benchmarks (private store only)
+Rscript scripts/build_scorecard.R final           # scorecard/p1.md + chart
+```
+
+**P1 notes (2026-11-20).**
+- With the automated ball-strike system, Statcast reports MLB 2026 and Triple-A 2023–2026 plate locations at the middle of the plate and the strike zone as the ABS height zone. `R/zone.R` converts everything to the front of the plate and to one per-batter zone on the 2023–2025 scale.
+- Grades are scored by models that never saw the pitcher, so they measure the pitch, not the pitcher's results. Prediction against Marcel and Pitching+ is judged at P3, where the projection combines grades with results (see `scorecard/p1.md`).

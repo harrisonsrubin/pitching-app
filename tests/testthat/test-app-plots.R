@@ -51,3 +51,13 @@ test_that("NULL display shows the message", {
     expect_match(output$message$html, "Pitch data unavailable")
   })
 })
+
+test_that("movement plot is drawn from the pitcher's view (catcher's-view HB mirrored)", {
+  o <- plot_fx()
+  d <- fixture_display(); d <- d[d$pitcher == 101, ]
+  b <- plotly::plotly_build(movement_plot(d, o$movement_ref, o$pctl, "MLB", 2026L))$x$data
+  fb <- Filter(function(t) identical(t$name, "4S"), b)[[1]]
+  expect_equal(as.numeric(unlist(fb$x)), -d$hb[d$pitch_type == "4S"])
+  arm <- Filter(function(t) grepl("arm angle", t$name %||% ""), b)[[1]]
+  expect_gt(unlist(arm$x)[2], 0)   # a righty's arm side is on his right
+})

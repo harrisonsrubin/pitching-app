@@ -7,6 +7,8 @@ source_app <- function() {
   invisible(TRUE)
 }
 
+# Horizontal values follow Statcast's catcher's view: a righty's release side and
+# fastball run are negative.
 fixture_display <- function() {
   set.seed(7)
   mk <- function(pitcher, types, n, throws, date) {
@@ -16,8 +18,8 @@ fixture_display <- function() {
       stand = rep(c("L", "R"), length.out = n), p_throws = throws,
       pitch_type = rep(types, length.out = n), pitch_type_savant = rep(types, length.out = n),
       balls = 0L, strikes = 0L, description = "ball", events = NA_character_,
-      velo = 92 + rnorm(n), spin_rate = 2300, ivb = 14 + rnorm(n), hb = ifelse(throws == "L", -1, 1) * (10 + rnorm(n)),
-      ext = 6.4, rel_x = ifelse(throws == "L", -2, 2), rel_z = 5.8, arm_angle = 42, vaa = -5,
+      velo = 92 + rnorm(n), spin_rate = 2300, ivb = 14 + rnorm(n), hb = ifelse(throws == "L", 1, -1) * (10 + rnorm(n)),
+      ext = 6.4, rel_x = ifelse(throws == "L", 2, -2), rel_z = 5.8, arm_angle = 42, vaa = -5,
       plate_x = rnorm(n, 0, 0.6), plate_z = rnorm(n, 2.5, 0.6), sz_top = 3.4, sz_bot = 1.6,
       stuff_xrv = rnorm(n, 0, 0.01), location_xrv = rnorm(n, 0, 0.01), pitching_xrv = rnorm(n, 0, 0.01))
   }

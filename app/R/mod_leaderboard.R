@@ -31,9 +31,9 @@ leaderboardUI <- function(id) {
       selectInput(ns("level"), "Level", c("MLB" = "MLB", "Triple-A" = "AAA", "Both" = "Both")),
       selectInput(ns("season"), "Season", choices = NULL),
       selectInput(ns("team"), "Team", choices = "All"),
-      sliderInput(ns("min_pitches"), "Min total pitches", min = 0, max = 2000, value = 300, step = 50)),
-    helpText("Click a row to open that pitcher's grades."),
-    DT::DTOutput(ns("table")))
+      sliderInput(ns("min_pitches"), "Min total pitches", min = 0, max = 2000, value = 300, step = 50, ticks = FALSE)),
+    p(class = "pv-note", "Overall grades and Stuff (S) and Location (L) by pitch type. Click a row to open that pitcher."),
+    bslib::card(fill = FALSE, bslib::card_body(fillable = FALSE, DT::DTOutput(ns("table"), height = "auto"))))
 }
 
 leaderboardServer <- function(id, outputs, sel, parent = NULL) {
@@ -60,10 +60,12 @@ leaderboardServer <- function(id, outputs, sel, parent = NULL) {
         dplyr::rename(Name = name, Team = team, Level = level, Pitches = pitches,
                       Stuff = stuff, Location = location, Pitching = pitching)
       grade_cols <- setdiff(names(shown), c("Name", "Team", "Level", "Pitches"))
-      DT::datatable(shown, rownames = FALSE, selection = "single",
-                    options = list(pageLength = 25, scrollX = TRUE, order = list(list(6, "desc")))) %>%
+      DT::datatable(shown, rownames = FALSE, selection = "single", class = "compact hover", fillContainer = FALSE,
+                    options = list(pageLength = 25, scrollX = TRUE, order = list(list(6, "desc")),
+                                   columnDefs = list(list(className = "pv-name-cell", targets = 0),
+                                                     list(className = "pv-gradecell", targets = which(names(shown) %in% grade_cols) - 1)))) %>%
         DT::formatRound(grade_cols, 0) %>%
-        DT::formatStyle(grade_cols, backgroundColor = DT::styleInterval(rev(GRADE_BINS) - 1e-9, rev(GRADE_COLORS)))
+        DT::formatStyle(grade_cols, backgroundColor = grade_fill(), color = grade_text_color())
     })
     observeEvent(input$table_rows_selected, {
       t <- board(); r <- t[input$table_rows_selected, ]

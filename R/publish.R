@@ -34,7 +34,8 @@ assert_private_repo <- function(data_repo, app_repo) {
 
 publish_display <- function(level, season, data_repo) {
   keys <- vapply(0:(N_BUCKETS - 1L), function(k) display_key(level, season, k), "")
-  for (k in keys) release_upload(k, data_repo)
+  # Rebuilt files can keep their size, so display is always re-sent (in one batch).
+  release_upload_dir(sprintf("display/%s/%s", level, season), data_repo, force = TRUE)
   invisible(keys)
 }
 

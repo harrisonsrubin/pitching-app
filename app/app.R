@@ -8,9 +8,11 @@ outputs <- load_outputs(cfg)
 cache <- bucket_cache(max = 12L)   # shared by every session
 
 ui <- page_navbar(
-  title = "Pitching",
+  title = "Pitch grades",
   id = "main_nav",
-  theme = bs_theme(version = 5),
+  theme = app_theme(),
+  window_title = "Pitch grades",
+  fillable = FALSE,
   sidebar = sidebar(width = 300, sidebarUI("sel")),
   nav_panel("Grades", gradesUI("grades")),
   nav_panel("Movement", movementUI("movement")),

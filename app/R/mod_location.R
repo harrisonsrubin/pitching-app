@@ -18,12 +18,12 @@ location_plot <- function(d) {
     ggplot2::coord_fixed(xlim = c(-2, 2), ylim = c(0, 5)) +
     ggplot2::facet_grid(stand ~ pitch_type, drop = FALSE) +
     ggplot2::labs(x = "Horizontal location (ft, pitcher's view)", y = "Height (ft)") +
-    ggplot2::theme_minimal(base_size = 13)
+    theme_pv()
 }
 
 locationUI <- function(id) {
   ns <- NS(id)
-  tagList(uiOutput(ns("message")), plotOutput(ns("plot"), height = "700px"))
+  tagList(uiOutput(ns("message")), bslib::card(fill = FALSE, bslib::card_body(fillable = FALSE, plotOutput(ns("plot"), height = "560px"))))
 }
 
 locationServer <- function(id, sel, display) {

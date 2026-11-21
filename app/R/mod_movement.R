@@ -1,5 +1,5 @@
-# Movement page: horizontal × induced vertical break (air-neutral, inches, catcher's
-# view as Statcast reports it), league ellipses for the pitcher's own pitch types at his
+# Movement page: horizontal × induced vertical break (air-neutral, inches), drawn from
+# the pitcher's view (Statcast's catcher's-view horizontal values mirrored), league ellipses for the pitcher's own pitch types at his
 # arm-angle decile, and per-pitch hover with expected run value and its league
 # percentile for that pitch type. The editor reads selections from this plot.
 
@@ -42,10 +42,16 @@ pitcher_arm_decile <- function(ref, hand, arm) {
   r$arm_decile[which.min(pmax(r$arm_lo - arm, arm - r$arm_hi, 0))]
 }
 
+# Statcast reports horizontal values from the catcher's view; the plot shows the
+# pitcher's view, so x and release side are mirrored (and each ellipse's tilt with them).
+to_pitcher_view <- function(d) { d$hb <- -d$hb; d$rel_x <- -d$rel_x; d }
+
 movement_plot <- function(d, movement_ref, pctl, level, season, corrected_uids = character()) {
+  d <- to_pitcher_view(d)
   hand <- d$p_throws[1]
   arm <- mean(d$arm_angle, na.rm = TRUE)
   ref <- movement_ref[movement_ref$level == level & movement_ref$season == season, ]
+  ref$mean_hb <- -ref$mean_hb; ref$rho <- -ref$rho
   dec <- pitcher_arm_decile(ref, hand, arm)
   p <- plotly::plot_ly(source = "movement")
   for (ty in intersect(PITCH_LABELS, unique(d$pitch_type))) {
@@ -73,11 +79,14 @@ movement_plot <- function(d, movement_ref, pctl, level, season, corrected_uids =
                            type = "scatter", mode = "lines", name = sprintf("arm angle %.0f°", arm),
                            line = list(color = "#2e8b57", dash = "dash", width = 2), hoverinfo = "name")
   }
-  plotly::layout(p, dragmode = "lasso",
-                 xaxis = list(title = "Horizontal break (in, catcher's view)", range = c(-28, 28), zeroline = TRUE),
-                 yaxis = list(title = "Induced vertical break (in)", range = c(-28, 28), zeroline = TRUE,
-                              scaleanchor = "x"),
-                 legend = list(orientation = "h")) %>%
+  plotly_style(p) %>% plotly::layout(dragmode = "lasso",
+                 xaxis = list(title = "Horizontal break (in, pitcher's view)", range = c(-28, 28), zeroline = FALSE,
+                              constrain = "domain", dtick = 10),
+                 yaxis = list(title = "Induced vertical break (in)", range = c(-28, 28), zeroline = FALSE,
+                              scaleanchor = "x", constrain = "domain", dtick = 10),
+                 shapes = list(list(type = "line", x0 = 0, x1 = 0, y0 = -28, y1 = 28, line = list(color = LINE, width = 1)),
+                               list(type = "line", x0 = -28, x1 = 28, y0 = 0, y1 = 0, line = list(color = LINE, width = 1)))) %>%
+    plotly::config(displaylogo = FALSE, modeBarButtonsToRemove = c("autoScale2d", "toggleSpikelines")) %>%
     plotly::event_register("plotly_selected")
 }
 
@@ -93,7 +102,9 @@ UNAVAILABLE <- "Pitch data unavailable right now. Grades, Leaderboard and Scorec
 
 movementUI <- function(id) {
   ns <- NS(id)
-  tagList(uiOutput(ns("message")), plotly::plotlyOutput(ns("plot"), height = "620px"))
+  tagList(uiOutput(ns("message")),
+          bslib::card(fill = FALSE, bslib::card_body(fillable = FALSE, plotly::plotlyOutput(ns("plot"), height = "640px"))),
+          p(class = "pv-note", "Pitcher's view. Dotted ovals show where league pitches of the same type land for pitchers with a similar arm angle. Use lasso or box select here to choose pitches for the editor."))
 }
 
 movementServer <- function(id, outputs, sel, display) {

@@ -23,7 +23,7 @@ test_that("display never goes to the public repo", {
   expect_true(all(vapply(args, function(a) "me/pitching-data" %in% a, TRUE)))
   expect_false(any(vapply(args, function(a) any(grepl("pitching-app", a)), TRUE)))
   ups <- Filter(function(a) a[2] == "upload", args)
-  expect_length(ups, 32)
+  expect_equal(sum(vapply(ups, function(a) sum(grepl("bucket_\\d+\\.parquet$", a)), 1L)), 32)
   expect_true(all(vapply(ups, function(a) "display--MLB--2026" %in% a, TRUE)))
 })
 

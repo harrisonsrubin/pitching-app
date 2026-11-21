@@ -33,12 +33,16 @@ release_tag <- function(key) gsub("/", "--", dirname(key), fixed = TRUE)
 
 # The one place that shells out to the GitHub CLI, so tests can mock it. `token`
 # overrides GH_TOKEN for one call (publishing to the app repo uses its own token).
+# system2() goes through the shell, so every argument is quoted (e.g. "Data store"),
+# and the pager is off: `gh release view` would otherwise wait for a keypress.
 gh_run <- function(args, token = NULL) {
-  if (is.null(token)) system2("gh", args) else system2("gh", args, env = paste0("GH_TOKEN=", token))
+  env <- c("GH_PAGER=cat", "PAGER=cat", if (!is.null(token)) paste0("GH_TOKEN=", shQuote(token)))
+  system2("gh", shQuote(args), env = env)
 }
 
 # Text output of a gh call (mockable like gh_run).
-gh_output <- function(args) suppressWarnings(system2("gh", args, stdout = TRUE, stderr = FALSE))
+gh_output <- function(args) suppressWarnings(system2("gh", shQuote(args), stdout = TRUE, stderr = FALSE,
+                                                    env = c("GH_PAGER=cat", "PAGER=cat")))
 
 ensure_release <- function(repo, tag) {
   if (identical(as.integer(gh_run(c("release", "view", tag, "--repo", repo))), 0L)) return(invisible(tag))
@@ -72,4 +76,33 @@ release_download_file <- function(key, repo) {
                      "--pattern", basename(key), "--dir", dest, "--clobber"))
   if (!identical(as.integer(status), 0L)) stop("gh release download failed for ", key)
   invisible(key)
+}
+
+# Uploads every file under a store directory, one gh call per release per `batch` files,
+# skipping files the release already holds at the same size (unless `force`). GitHub
+# allows 5,000 API calls an hour, so one call per file does not scale to a full store.
+# GitHub also caps uploads per hour separately from API calls, so each batch is followed
+# by a pause of `seconds_per_file` per file sent.
+upload_pause <- function(seconds) Sys.sleep(seconds)
+
+release_upload_dir <- function(prefix, repo, batch = 50, force = FALSE, seconds_per_file = 1) {
+  keys <- store_list(prefix)
+  for (tag in unique(release_tag(keys))) {
+    k <- keys[release_tag(keys) == tag]
+    ensure_release(repo, tag)
+    if (!force) {
+      have <- gh_output(c("release", "view", tag, "--repo", repo, "--json", "assets",
+                          "--jq", ".assets[] | \"\\(.name)\\t\\(.size)\""))
+      have <- strsplit(have[nzchar(have)], "\t", fixed = TRUE)
+      sizes <- stats::setNames(as.numeric(vapply(have, `[`, "", 2)), vapply(have, `[`, "", 1))
+      k <- k[!(basename(k) %in% names(sizes) & sizes[basename(k)] == file.size(store_path(k)))]
+    }
+    for (chunk in split(k, ceiling(seq_along(k) / batch))) {
+      status <- gh_run(c("release", "upload", tag, store_path(chunk), "--repo", repo, "--clobber"))
+      if (!identical(as.integer(status), 0L)) stop("gh release upload failed for ", tag)
+      upload_pause(length(chunk) * seconds_per_file)
+    }
+    if (length(k)) message(tag, ": uploaded ", length(k), " file(s)")
+  }
+  invisible(keys)
 }

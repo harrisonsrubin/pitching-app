@@ -13,9 +13,8 @@ if (length(args) != 2) stop("Usage: Rscript scripts/sync_store.R upload|upload-f
 path <- args[2]
 
 if (identical(args[1], "upload")) {
-  keys <- store_list(path)
-  for (k in keys) release_upload(k, repo)
-  message("Uploaded ", length(keys), " file(s) under ", path)
+  keys <- release_upload_dir(path, repo)   # skips files already uploaded at the same size
+  message("Synced ", length(keys), " file(s) under ", path)
 } else if (identical(args[1], "upload-file")) {
   if (!store_exists(path)) stop("No such file in the store: ", path)
   release_upload(path, repo)

@@ -47,8 +47,9 @@ grades_table <- function(grades, components, pitcher, level, season, summary, sc
 
 gradesUI <- function(id) {
   ns <- NS(id)
-  tagList(uiOutput(ns("header")), DT::DTOutput(ns("table")),
-          helpText("Pitch metrics need the pitch-level data; grades and component rates are always shown."))
+  tagList(uiOutput(ns("header")),
+          bslib::card(fill = FALSE, bslib::card_body(fillable = FALSE, DT::DTOutput(ns("table"), height = "auto"))),
+          p(class = "pv-note", "Grades are 20-80 (50 is average) with 80% ranges. Horizontal break and release side are from the pitcher's view. Expected rates come from the component models."))
 }
 
 gradesServer <- function(id, outputs, sel, display) {
@@ -58,13 +59,27 @@ gradesServer <- function(id, outputs, sel, display) {
       p <- outputs$pitchers[outputs$pitchers$pitcher == s$pitcher & outputs$pitchers$level == s$level &
                               outputs$pitchers$season == s$season, ]
       if (nrow(p) == 0) return(NULL)
-      ip <- if (is.na(p$ip_outs)) "" else sprintf("%d.%d", p$ip_outs %/% 3, p$ip_outs %% 3)
-      div(style = "display:flex;gap:16px;align-items:center;margin-bottom:12px;",
-          tags$img(src = sprintf(HEADSHOT_URL, as.integer(p$pitcher)), height = "90px"),
-          div(h3(ifelse(is.na(p$name), paste("ID", p$pitcher), p$name), style = "margin:0;"),
-              div(sprintf("%s · %sHP · %s %d", p$team_abbrev, p$throws, LEVEL_LABELS[[s$level]], s$season)),
-              div(sprintf("G %s · GS %s · IP %s · %s pitches", fmt_num(p$g, 0), fmt_num(p$gs, 0), ip,
-                          format(p$pitches, big.mark = ",")))))
+      ip <- if (is.na(p$ip_outs)) "–" else sprintf("%d.%d", p$ip_outs %/% 3, p$ip_outs %% 3)
+      hand <- c(R = "Right-handed", L = "Left-handed")[[p$throws]] %||% ""
+      overall <- outputs$grades[outputs$grades$pitcher == s$pitcher & outputs$grades$level == s$level &
+                                  outputs$grades$season == s$season & outputs$grades$half == "full" &
+                                  outputs$grades$pitch_type == "ALL", ]
+      tile <- function(facet, label) {
+        g <- overall[overall$facet == facet, ]
+        if (nrow(g) == 0 || is.na(g$grade_global)) return(NULL)
+        div(class = "pv-grade", style = sprintf("background:%s;", grade_color(g$grade_global)),
+            div(class = "pv-num", round(g$grade_global)),
+            div(class = "pv-range", sprintf("%d–%d", round(g$grade_lo80), round(g$grade_hi80))),
+            div(class = "pv-tool", label))
+      }
+      div(class = "pv-card",
+          tags$img(src = sprintf(HEADSHOT_URL, as.integer(p$pitcher)), alt = ""),
+          div(h2(class = "pv-name", ifelse(is.na(p$name), paste("Pitcher", p$pitcher), p$name)),
+              div(class = "pv-sub", sprintf("%s, %s pitcher, %s %d", p$team_abbrev, tolower(hand),
+                                            LEVEL_LABELS[[s$level]], s$season)),
+              div(class = "pv-line", sprintf("%s games (%s starts), %s innings, %s pitches", fmt_num(p$g, 0),
+                                             fmt_num(p$gs, 0), ip, format(p$pitches, big.mark = ",")))),
+          div(class = "pv-grades", tile("stuff", "Stuff"), tile("location", "Location"), tile("pitching", "Pitching")))
     })
     tbl <- reactive({
       s <- sel$state()
@@ -83,12 +98,13 @@ gradesServer <- function(id, outputs, sel, display) {
         `xwOBAcon` = xwoba_con, `GB%` = gb,
         sv = stuff_value, lv = location_value, pv = pitching_value)
       hidden <- which(names(shown) %in% c("sv", "lv", "pv")) - 1
-      dt <- DT::datatable(shown, rownames = FALSE, selection = "none",
-                          options = list(dom = "t", paging = FALSE, ordering = FALSE,
-                                         columnDefs = list(list(visible = FALSE, targets = hidden))))
+      dt <- DT::datatable(shown, rownames = FALSE, selection = "none", class = "compact hover", fillContainer = FALSE,
+                          options = list(dom = "t", paging = FALSE, ordering = FALSE, scrollX = TRUE,
+                                         columnDefs = list(list(visible = FALSE, targets = hidden),
+                                                           list(className = "pv-gradecell", targets = which(names(shown) %in% c("Stuff", "Location", "Pitching")) - 1))))
       for (pair in list(c("Stuff", "sv"), c("Location", "lv"), c("Pitching", "pv")))
         dt <- DT::formatStyle(dt, pair[1], valueColumns = pair[2],
-                              backgroundColor = DT::styleInterval(rev(GRADE_BINS) - 1e-9, rev(GRADE_COLORS)))
+                              backgroundColor = grade_fill(), color = grade_text_color())
       dt
     })
   })

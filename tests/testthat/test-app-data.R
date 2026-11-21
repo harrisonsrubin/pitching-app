@@ -107,3 +107,33 @@ test_that("the bucket cache is shared and capped", {
   expect_equal(cache_size(cache), 2L)
   expect_false(cache_has(cache, "MLB 2026 5"))   # 101 %% 32: the oldest, evicted
 })
+
+test_that("a failed pitch-data download is logged with its reason, never the token", {
+  source_app()
+  httr2::local_mocked_responses(function(req) httr2::response(status_code = 404))
+  msgs <- capture_messages(fetch_display(remote_cfg("secret-token"), "MLB", 2026L, 102L, bucket_cache()))
+  expect_true(any(grepl("Pitch data unavailable for MLB 2026 bucket 6", msgs)))
+  expect_true(any(grepl("404", msgs)))
+  expect_false(any(grepl("secret-token", msgs, fixed = TRUE)))
+  msgs2 <- capture_messages(fetch_display(remote_cfg(""), "MLB", 2026L, 102L, bucket_cache()))
+  expect_true(any(grepl("PV_DATA_TOKEN or PV_DATA_REPO is not set", msgs2)))
+})
+
+test_that("public outputs are listed and downloaded without the private-repo token", {
+  source_app()
+  seen <- new.env(); seen$auth <- character(); seen$urls <- character()
+  httr2::local_mocked_responses(function(req) {
+    seen$urls <- c(seen$urls, req$url)
+    seen$auth <- c(seen$auth, httr2::req_get_headers(req, "reveal")$Authorization %||% "")
+    if (grepl("/releases/tags/outputs$", req$url))
+      return(httr2::response(status_code = 200, headers = list(`Content-Type` = "application/json"),
+        body = charToRaw('{"assets":[{"name":"scorecard.md","url":"https://api.github.com/repos/o/pitching-app/releases/assets/1","browser_download_url":"https://github.com/o/pitching-app/releases/download/outputs/scorecard.md"}]}')))
+    if (grepl("releases/download/outputs/scorecard.md$", req$url)) return(httr2::response(status_code = 200, body = charToRaw("# hi")))
+    httr2::response(status_code = 404)
+  })
+  cfg <- list(local = FALSE, app_repo = "o/pitching-app", data_repo = "o/pitching-data", data_token = "repo-limited-token")
+  dir <- outputs_dir(cfg)
+  expect_true(file.exists(file.path(dir, "scorecard.md")))
+  expect_true(all(seen$auth == ""))
+  expect_true(any(grepl("releases/download/outputs/scorecard.md$", seen$urls)))
+})

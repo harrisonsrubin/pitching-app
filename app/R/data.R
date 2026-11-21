@@ -29,7 +29,8 @@ gh_request <- function(url, token = NULL) {
 TRANSIENT_STATUS <- c(403, 429, 500, 502, 503, 504)
 
 # Retries rate limits and server errors (Connect Cloud egress IPs are shared, and the
-# unauthenticated API allows 60 calls an hour). Returns the last response.
+# unauthenticated API allows 60 calls an hour; the app makes one at startup).
+# Returns the last response.
 perform_with_retry <- function(req, tries = 4, backoff = function(i) 2^i) {
   for (i in seq_len(tries)) {
     resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
@@ -39,10 +40,12 @@ perform_with_retry <- function(req, tries = 4, backoff = function(i) 2^i) {
   }
 }
 
-# Any token can read a public repo, and an authenticated call has a far higher limit.
 release_assets <- function(repo, tag, token = NULL, tries = 4, backoff = function(i) 2^i) {
   resp <- perform_with_retry(gh_request(sprintf("%s/repos/%s/releases/tags/%s", GITHUB_API, repo, tag), token), tries, backoff)
   if (is.null(resp)) stop("release ", tag, ": no response")
+  if (httr2::resp_status(resp) != 200)
+    stop("release ", tag, ": HTTP ", httr2::resp_status(resp),
+         if (httr2::resp_status(resp) == 404) " (missing, or the token cannot see this repo)")
   httr2::resp_body_json(resp, simplifyVector = FALSE)$assets
 }
 
@@ -56,12 +59,14 @@ download_asset <- function(asset, dest, token = NULL) {
   dest
 }
 
+# Public outputs are read without a token: PV_DATA_TOKEN is limited to the private data
+# repo, and GitHub answers "not found" when such a token asks about any other repo.
+# Assets download from github.com links, which do not count against the API limit.
 outputs_dir <- function(cfg) {
   if (cfg$local) return(file.path(cfg$data_dir, "outputs"))
   dir <- file.path(tempdir(), "pv_outputs")
   dir.create(dir, showWarnings = FALSE)
-  token <- if (nzchar(cfg$data_token %||% "")) cfg$data_token else NULL
-  for (a in release_assets(cfg$app_repo, "outputs", token)) download_asset(a, file.path(dir, a$name))
+  for (a in release_assets(cfg$app_repo, "outputs")) download_asset(a, file.path(dir, a$name))
   dir
 }
 
@@ -120,7 +125,7 @@ fetch_display <- function(cfg, level, season, pitcher, cache) {
       if (cfg$local) {
         tibble::as_tibble(arrow::read_parquet(file.path(cfg$data_dir, sprintf("display/%s/%s/bucket_%d.parquet", level, season, k))))
       } else {
-        if (!nzchar(cfg$data_token) || !nzchar(cfg$data_repo)) stop("no token")
+        if (!nzchar(cfg$data_token %||% "") || !nzchar(cfg$data_repo %||% "")) stop("PV_DATA_TOKEN or PV_DATA_REPO is not set")
         assets <- release_assets(cfg$data_repo, sprintf("display--%s--%s", level, season), cfg$data_token)
         a <- Filter(function(x) identical(x$name, sprintf("bucket_%d.parquet", k)), assets)
         if (length(a) == 0) stop("bucket not published")
@@ -128,7 +133,11 @@ fetch_display <- function(cfg, level, season, pitcher, cache) {
         on.exit(unlink(tmp), add = TRUE)
         tibble::as_tibble(arrow::read_parquet(download_asset(a[[1]], tmp, cfg$data_token)))
       }
-    }, error = function(e) NULL)
+    }, error = function(e) {
+      # Shows in the host's logs; the message never contains the token.
+      message("Pitch data unavailable for ", level, " ", season, " bucket ", k, ": ", conditionMessage(e))
+      NULL
+    })
     if (!is.null(b)) cache_set(cache, key, b)
   }
   if (is.null(b)) return(NULL)

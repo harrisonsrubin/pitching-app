@@ -143,3 +143,13 @@ test_that("the rescore seasons check rejects multi-line and malformed input", {
   expect_false(ok("2025;id"))
   expect_false(ok("25"))
 })
+
+test_that("every workflow installs the R version renv.lock was built with", {
+  lock_r <- jsonlite::read_json(file.path(repo_root(), "renv.lock"))$R$Version
+  for (f in setdiff(list.files(wf_dir(), full.names = TRUE), file.path(wf_dir(), "deploy.yml"))) {
+    steps <- unlist(lapply(yaml::read_yaml(f)$jobs, function(j) j$steps), recursive = FALSE)
+    setup <- Filter(function(s) grepl("r-lib/actions/setup-r@", s$uses %||% ""), steps)
+    expect_length(setup, 1)
+    expect_equal(as.character(setup[[1]]$with$`r-version`), lock_r, info = f)
+  }
+})

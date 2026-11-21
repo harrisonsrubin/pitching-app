@@ -1,6 +1,4 @@
-# Temporarily replace functions defined in the global environment (this repo sources
-# plain R files rather than building a package, so testthat's local_mocked_bindings
-# does not apply). Restored automatically when the calling test ends.
+# Swap a global function until the calling test ends (not a package, so no mocked bindings)
 local_global_binding <- function(..., .frame = parent.frame()) {
   new <- list(...)
   env <- globalenv()

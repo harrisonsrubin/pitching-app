@@ -60,10 +60,10 @@ jobs:
           fi
           echo "Seasons: $SEASONS"
           for S in $SEASONS; do
-            for LV in $(Rscript -e "source('R/load.R'); cat(levels_for($S))"); do
+            for LV in $(Rscript -e "source('R/load.R'); writeLines(levels_for($S))"); do
               Rscript run.R fetch_inputs $LV $S
               Rscript run.R update_season $LV $S
               Rscript run.R publish season $LV $S
             done
           done
-          Rscript run.R project $(Rscript -e 'source("R/load.R"); cat(last_season())')
+          Rscript run.R project $(Rscript -e 'source("R/load.R"); writeLines(as.character(last_season()))')

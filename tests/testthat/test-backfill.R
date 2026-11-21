@@ -59,7 +59,7 @@ test_that("compaction dedupes resumed-game pitches, keeping the later date", {
   expect_equal(d$game_date[d$pitch_uid == "1-1-1"], as.Date("2025-05-02"))
 })
 
-# ── Review fixes ──────────────────────────────────────────────────────────────
+# Retries, partial days, and compaction
 two_games <- function(date, level) c(1L, 2L)
 fetch_game1_only <- function(date, level) tibble::tibble(pitch_uid = "1-1-1", game_pk = 1L, game_date = date)
 one_day_at <- function(d) function(season, level) as.Date(d)

@@ -59,5 +59,5 @@ test_that("movement plot is drawn from the pitcher's view (catcher's-view HB mir
   fb <- Filter(function(t) identical(t$name, "4S"), b)[[1]]
   expect_equal(as.numeric(unlist(fb$x)), -d$hb[d$pitch_type == "4S"])
   arm <- Filter(function(t) grepl("arm angle", t$name %||% ""), b)[[1]]
-  expect_gt(unlist(arm$x)[2], 0)   # a righty's arm side is on his right
+  expect_gt(unlist(arm$x)[2], 0)  # a righty's arm side is on his right
 })

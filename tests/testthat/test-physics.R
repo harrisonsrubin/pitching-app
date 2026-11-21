@@ -15,8 +15,7 @@ test_that("approach angle sign and zero case", {
 })
 
 test_that("spin efficiency: no Magnus means zero, bounded, monotone", {
-  # acceleration = gravity + drag along the mid-flight velocity only -> no Magnus.
-  # Solve the fixed point: drag direction depends on the mid-flight velocity.
+  # Gravity plus drag only (no Magnus); iterate since drag depends on mid-flight velocity
   v0 <- c(0, -130, -3); a <- c(0, 25, -32.174)
   for (i in 1:50) {
     vm <- mid_flight_velocity(v0[1], v0[2], v0[3], a[1], a[2], a[3])

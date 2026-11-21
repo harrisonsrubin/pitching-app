@@ -1,12 +1,8 @@
-# Grade pages: Grades, Movement, Location, Leaderboard, Stuff Map, Command & Tunneling, Rolling,
-# Scorecard.
+# Grade pages: Grades, Movement, Location, Leaderboard, Stuff Map, Command, Rolling
 
-# ==== pitch_summary =======================================================================
+# Pitch summary
 
-# Per-type pitch metrics for the Grades table, from the pitcher's display rows. Metrics
-# follow the batter-side filter; usage splits vs L / vs R always use every pitch.
-# Horizontal break and release side are from the pitcher's view, as on the Movement plot.
-
+# Per-type metrics from the pitcher's view; L/R usage always uses every pitch
 pitch_summary <- function(display, side = "All") {
   if (is.null(display) || nrow(display) == 0) return(NULL)
   splits <- display %>% dplyr::group_by(pitch_type) %>%
@@ -25,20 +21,19 @@ pitch_summary <- function(display, side = "All") {
     dplyr::arrange(dplyr::desc(usage))
 }
 
-# ==== grades ==========================================================================
-
-# Grades page: the selected pitcher's grades by pitch type, with 90% ranges, pitch
-# metrics and expected component rates.
-
+# Grades page
 HEADSHOT_URL <- "https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:silo:current.png,q_100/v1/people/%d/headshot/silo/current"
 
+# Number and percent formatters that blank out NA
 fmt_num <- function(x, digits = 1) ifelse(is.na(x) | is.nan(x), "", formatC(x, digits = digits, format = "f"))
 fmt_pct <- function(x) ifelse(is.na(x) | is.nan(x), "", sprintf("%.1f%%", 100 * x))
 
+# "Grade (lo-hi)" cell text
 grade_cell <- function(value, lo, hi) {
   ifelse(is.na(value), "", sprintf("%d (%d–%d)", round(clamp_grade(value)), round(clamp_grade(lo)), round(clamp_grade(hi))))
 }
 
+# One facet's grades on the chosen scale, range shifted to match
 facet_grade <- function(g, facet, scale) {
   f <- g[g$facet == facet, ]
   use_type <- scale == "type" & !is.na(f$grade_type)
@@ -48,6 +43,7 @@ facet_grade <- function(g, facet, scale) {
                  cell = grade_cell(value, f$grade_lo90 + shift, f$grade_hi90 + shift))
 }
 
+# Per-pitch-type grades table with metrics
 grades_table <- function(grades, components, pitcher, level, season, summary, scale, min_pitches = 0) {
   g <- grades[grades$pitcher == pitcher & grades$level == level & grades$season == season & grades$half == "full", ]
   if (nrow(g) == 0) return(NULL)
@@ -76,6 +72,7 @@ grades_table <- function(grades, components, pitcher, level, season, summary, sc
   dplyr::bind_rows(types, out[out$pitch_type == "ALL", ])
 }
 
+# Grades page layout
 gradesUI <- function(id) {
   ns <- NS(id)
   tagList(uiOutput(ns("header")), uiOutput(ns("empty")),
@@ -83,6 +80,7 @@ gradesUI <- function(id) {
           p(class = "pv-note", "Grades are 20-80 (50 is average) with 90% ranges. Horizontal break and release side are from the pitcher's view. Expected rates come from the component models."))
 }
 
+# Scouting card header and grades table
 gradesServer <- function(id, outputs, sel, display) {
   moduleServer(id, function(input, output, session) {
     output$header <- renderUI({
@@ -146,13 +144,9 @@ gradesServer <- function(id, outputs, sel, display) {
   })
 }
 
-# ==== movement ========================================================================
+# Movement page
 
-# Movement page: horizontal × induced vertical break (air-neutral, inches), drawn from
-# the pitcher's view (Statcast's catcher's-view horizontal values mirrored), league ellipses for the pitcher's own pitch types at his
-# arm-angle decile, and per-pitch hover with expected run value and its league
-# percentile for that pitch type. The editor draws its own copy with lasso selection.
-
+# Points for a correlated-normal ellipse
 make_ellipse <- function(cx, cy, sx, sy, rho, scale = 1.5, n = 72) {
   t <- seq(0, 2 * pi, length.out = n)
   rho <- max(min(rho, 0.99), -0.99)
@@ -161,12 +155,14 @@ make_ellipse <- function(cx, cy, sx, sy, rho, scale = 1.5, n = 72) {
   tibble::tibble(x = cx + a, y = cy + b)
 }
 
+# League percentile of xRV (higher is better for the pitcher)
 xrv_pctl <- function(xrv, q) {
   if (is.null(q) || length(q) < 2) return(rep(NA_real_, length(xrv)))
   p <- stats::approx(q, seq(0, 100, 1), xout = xrv, rule = 2, ties = "ordered")$y
   round(100 - p)
 }
 
+# Per-pitch hover text
 pctl_text <- function(d, pctl, level, season) {
   lines <- lapply(c("stuff", "location", "pitching"), function(f) {
     out <- character(nrow(d))
@@ -186,16 +182,17 @@ pctl_text <- function(d, pctl, level, season) {
         lines[[1]], lines[[2]], lines[[3]], sep = "<br>")
 }
 
+# League arm-angle decile closest to this pitcher's arm angle
 pitcher_arm_decile <- function(ref, hand, arm) {
   r <- dplyr::distinct(ref[ref$p_throws == hand, ], arm_decile, arm_lo, arm_hi)
   if (nrow(r) == 0 || is.na(arm)) return(NA_integer_)
   r$arm_decile[which.min(pmax(r$arm_lo - arm, arm - r$arm_hi, 0))]
 }
 
-# Statcast reports horizontal values from the catcher's view; the plot shows the
-# pitcher's view, so x and release side are mirrored (and each ellipse's tilt with them).
+# Flip Statcast's catcher's view to the pitcher's view
 to_pitcher_view <- function(d) { d$hb <- -d$hb; d$rel_x <- -d$rel_x; d }
 
+# Movement scatter with league ellipses, shared with the editor
 movement_plot <- function(d, movement_ref, pctl, level, season, corrected_uids = character(),
                           source = "movement", dragmode = "zoom") {
   d <- to_pitcher_view(d)
@@ -241,8 +238,10 @@ movement_plot <- function(d, movement_ref, pctl, level, season, corrected_uids =
     plotly::event_register("plotly_selected")
 }
 
+# Keep one batter side, or all
 side_filter <- function(d, side) if (is.null(d) || !(side %in% c("L", "R"))) d else d[d$stand == side, ]
 
+# Pitches retagged in the file or this session
 corrected_uids <- function(d, edits) {
   if (is.null(d)) return(character())
   c(d$pitch_uid[!is.na(d$pitch_type_savant) & d$pitch_type != d$pitch_type_savant],
@@ -251,6 +250,7 @@ corrected_uids <- function(d, edits) {
 
 UNAVAILABLE <- "Pitch data unavailable right now. Grades, Leaderboard and Scorecard still work."
 
+# Movement page layout
 movementUI <- function(id) {
   ns <- NS(id)
   tagList(uiOutput(ns("message")),
@@ -258,6 +258,7 @@ movementUI <- function(id) {
           p(class = "pv-note", "Pitcher's view. Dotted ovals show where league pitches of the same type land for pitchers with a similar arm angle. Drag to zoom; double-click to reset. To retag pitches, use the Pitch-Type Editor."))
 }
 
+# Movement plot for the selected pitcher
 movementServer <- function(id, outputs, sel, display) {
   moduleServer(id, function(input, output, session) {
     output$message <- renderUI(if (is.null(display$rows())) div(class = "alert alert-warning", UNAVAILABLE))
@@ -269,11 +270,9 @@ movementServer <- function(id, outputs, sel, display) {
   })
 }
 
-# ==== location ========================================================================
+# Location page
 
-# Location page: where each pitch type is thrown, by batter side, from the pitcher's
-# view (catcher's-view plate_x flipped), with the average strike zone drawn.
-
+# Pitch density by type and batter side from the pitcher's view
 location_plot <- function(d) {
   d <- d %>% dplyr::mutate(x = -plate_x, stand = factor(ifelse(stand == "L", "vs LHB", "vs RHB"), c("vs LHB", "vs RHB")),
                            pitch_type = factor(pitch_type, intersect(PITCH_LABELS, unique(pitch_type))))
@@ -294,11 +293,13 @@ location_plot <- function(d) {
     theme_pv()
 }
 
+# Location page layout
 locationUI <- function(id) {
   ns <- NS(id)
   tagList(uiOutput(ns("message")), bslib::card(fill = FALSE, bslib::card_body(fillable = FALSE, plotOutput(ns("plot"), height = "560px"))))
 }
 
+# Location plot for the selected pitcher
 locationServer <- function(id, sel, display) {
   moduleServer(id, function(input, output, session) {
     output$message <- renderUI(if (is.null(display$rows())) div(class = "alert alert-warning", UNAVAILABLE))
@@ -309,12 +310,9 @@ locationServer <- function(id, sel, display) {
   })
 }
 
-# ==== leaderboard =====================================================================
+# Leaderboard
 
-# Leaderboard: every graded pitcher for a level (or both) and season, overall Stuff /
-# Location / Pitching plus Stuff and Location by pitch type. Clicking a row opens that
-# pitcher on the Grades page.
-
+# Overall grades plus Stuff and Location by pitch type for every pitcher
 leaderboard_table <- function(grades, pitchers, level, season, team, min_pitches, scale) {
   lv <- if (identical(level, "Both")) c("MLB", "AAA") else level
   p <- pitchers[pitchers$level %in% lv & pitchers$season == season & pitchers$pitches >= min_pitches, ]
@@ -340,6 +338,7 @@ leaderboard_table <- function(grades, pitchers, level, season, team, min_pitches
     dplyr::arrange(dplyr::desc(pitching))
 }
 
+# Leaderboard filters and table
 leaderboardUI <- function(id) {
   ns <- NS(id)
   tagList(
@@ -352,6 +351,7 @@ leaderboardUI <- function(id) {
     bslib::card(fill = FALSE, bslib::card_body(fillable = FALSE, DT::DTOutput(ns("table"), height = "auto"))))
 }
 
+# Row click opens that pitcher on the Grades page
 leaderboardServer <- function(id, outputs, sel, parent = NULL) {
   moduleServer(id, function(input, output, session) {
     observe({
@@ -365,11 +365,10 @@ leaderboardServer <- function(id, outputs, sel, parent = NULL) {
       p <- outputs$pitchers[outputs$pitchers$level %in% lv & outputs$pitchers$season == as.integer(input$season), ]
       updateSelectInput(session, "team", choices = c("All", sort(unique(unlist(strsplit(p$teams, ","))))))
     }) %>% bindEvent(input$level, input$season)
-    # Only the grade scale matters here; a pitcher change elsewhere must not rebuild the
-    # table (that would reset its sort and page). A reactiveVal ignores same-value sets.
-    scale <- reactiveVal(NULL)   # set from the sidebar before the first build, so no startup flip
+    # Track only the scale so a pitcher change doesn't reset the table's sort and page
+    scale <- reactiveVal(NULL)
     observe({
-      v <- sel$state()$scale %||% "global"   # waits (silently) until the sidebar is ready
+      v <- sel$state()$scale %||% "global"  # waits until the sidebar is ready
       if (!identical(v, isolate(scale()))) scale(v)
     })
     board <- reactive({
@@ -398,12 +397,9 @@ leaderboardServer <- function(id, outputs, sel, parent = NULL) {
   })
 }
 
-# ==== stuffmap ========================================================================
+# Stuff map
 
-# Stuff Map: every pitcher's average movement for one pitch type, colored by his Stuff
-# grade for it. Horizontal break is shown as arm-side break (lefties mirrored) so
-# righties and lefties compare directly. The sidebar's pitcher is highlighted.
-
+# Average movement per pitcher for one pitch type, with arm-side break and Stuff grade
 stuff_map_data <- function(profiles, grades, pitchers, level, season, pitch_type, min_pitches) {
   p <- profiles[profiles$level == level & profiles$season == season & profiles$pitch_type == pitch_type &
                   profiles$n >= min_pitches, ]
@@ -412,12 +408,13 @@ stuff_map_data <- function(profiles, grades, pitchers, level, season, pitch_type
                 grades$facet == "stuff" & grades$pitch_type == pitch_type, c("pitcher", "grade_type")]
   who <- pitchers[pitchers$level == level & pitchers$season == season, c("pitcher", "name", "team_abbrev")]
   p %>%
-    dplyr::mutate(arm_side = hb * ifelse(p_throws == "L", 1, -1)) %>%   # Statcast catcher's view
+    dplyr::mutate(arm_side = hb * ifelse(p_throws == "L", 1, -1)) %>%  # Statcast catcher's view
     dplyr::left_join(dplyr::rename(g, grade = grade_type), by = "pitcher") %>%
     dplyr::left_join(dplyr::rename(who, team = team_abbrev), by = "pitcher") %>%
     dplyr::filter(!is.na(grade))
 }
 
+# Stuff Map page layout
 stuffmapUI <- function(id) {
   ns <- NS(id)
   tagList(
@@ -430,6 +427,7 @@ stuffmapUI <- function(id) {
     p(class = "pv-note", "Each dot is one pitcher's average for this pitch type. Arm-side break is positive for both hands. Color is his Stuff grade for the pitch; the pitcher selected in the sidebar is outlined."))
 }
 
+# Stuff Map plot with the selected pitcher highlighted
 stuffmapServer <- function(id, outputs, sel) {
   moduleServer(id, function(input, output, session) {
     data <- reactive({
@@ -463,12 +461,9 @@ stuffmapServer <- function(id, outputs, sel) {
   })
 }
 
-# ==== command =========================================================================
+# Command and tunneling
 
-# Command & Tunneling: where pitches land relative to each batter's zone (descriptive
-# shares, next to the tested Location grade), and for the selected pitcher how far apart
-# each pair of his pitches is at the decision point versus at the plate. No new grade.
-
+# Zone shares per pitcher next to the overall Location grade
 command_table <- function(command, grades, pitchers, level, season, team, min_pitches) {
   p <- pitchers[pitchers$level == level & pitchers$season == season & pitchers$pitches >= min_pitches, ]
   if (!identical(team, "All")) p <- p[vapply(strsplit(p$teams, ",", fixed = TRUE), function(t) team %in% t, TRUE), ]
@@ -482,7 +477,7 @@ command_table <- function(command, grades, pitchers, level, season, team, min_pi
     dplyr::arrange(dplyr::desc(shadow))
 }
 
-# Pairs are compared within one batter side (pitches thrown to the same hitters).
+# Gap between each pair of pitch types at the tunnel point and plate, per batter side
 tunnel_pairs <- function(tunnel, pitcher, level, season, side = "All") {
   empty <- tibble::tibble(vs = character(), pair = character(), tunnel_gap_in = numeric(),
                           plate_gap_in = numeric(), split_in = numeric())
@@ -501,6 +496,7 @@ tunnel_pairs <- function(tunnel, pitcher, level, season, side = "All") {
   dplyr::mutate(r, split_in = plate_gap_in - tunnel_gap_in)
 }
 
+# Command & Tunneling page layout
 commandUI <- function(id) {
   ns <- NS(id)
   tagList(
@@ -517,11 +513,12 @@ commandUI <- function(id) {
     p(class = "pv-note", sprintf("Average gap between two pitch types %.1f ft in front of the plate, about when a hitter must decide, and at the plate, compared within each batter side (the sidebar's batter side narrows it). A small early gap with a large late one means the pitches look alike longer.", TUNNEL_FT_APP)))
 }
 
-TUNNEL_FT_APP <- 23.8
+TUNNEL_FT_APP <- 23.8  # feet in front of the plate
 
+# Command table and the selected pitcher's tunnel pairs
 commandServer <- function(id, outputs, sel) {
   moduleServer(id, function(input, output, session) {
-    # The whole page follows the sidebar's level, season and team.
+    # Page follows the sidebar's level, season and team
     output$scope <- renderUI({
       s <- sel$state()
       p(class = "pv-note", sprintf("%s %d, %s (set in the sidebar).", LEVEL_LABELS[[s$level]], s$season,
@@ -568,19 +565,10 @@ commandServer <- function(id, outputs, sel) {
   })
 }
 
-# ==== rolling =========================================================================
-
-# Rolling: each pitch type's grade over the season, from the last 100 pitches of that
-# type up to each game (shown once a type has 50 pitches), on the same 20-80 scale as
-# the season grade. Velocity is shown the same way, in mph.
-
+# Rolling
 ROLLING_FACETS <- c("Stuff" = "stuff", "Location" = "location", "Pitching" = "pitching", "Velocity" = "velo")
 
-# A 100-pitch average also carries sampling noise (large for Location and Pitching), so
-# each window is pulled toward the type average by k = unit^2 / (unit^2 + s^2 / n): unit^2
-# is the spread of true pitcher-type means (the grade unit), s^2 the pitch-to-pitch
-# variance of this pitcher's type over the season. That is the same logic that shrinks
-# the season grades, so the line moves only as much as the evidence supports.
+# Rolling 100-pitch grade per type, shrunk toward the type average like the season grades
 rolling_grades <- function(display, anchors, facet, window = 100, min_n = 50) {
   if (is.null(display) || nrow(display) == 0) return(tibble::tibble())
   if (facet != "velo" && is.null(anchors)) return(tibble::tibble())
@@ -607,6 +595,7 @@ rolling_grades <- function(display, anchors, facet, window = 100, min_n = 50) {
     dplyr::filter(!is.na(value)) %>% dplyr::select(-k)
 }
 
+# Rolling page layout
 rollingUI <- function(id) {
   ns <- NS(id)
   tagList(
@@ -617,6 +606,7 @@ rollingUI <- function(id) {
     p(class = "pv-note", "Each point is the last 100 pitches of that type up to that game (shown from 50 pitches on), pulled toward average in proportion to how noisy that window is. Location and Pitching move less than Stuff because single pitches vary more. Dashed lines are the full-season grades."))
 }
 
+# Rolling lines with the season grade as a dashed reference
 rollingServer <- function(id, outputs, sel, display) {
   moduleServer(id, function(input, output, session) {
     data <- reactive({
@@ -655,10 +645,9 @@ rollingServer <- function(id, outputs, sel, display) {
   })
 }
 
-# ==== scorecard =======================================================================
+# Scorecard page
 
-# Scorecard page: the published P1 scorecard (markdown tables + chart).
-
+# Published scorecard markdown as HTML
 scorecard_html <- function(md_path) {
   if (!file.exists(md_path)) return("<p>The scorecard has not been published yet.</p>")
   md <- readLines(md_path, warn = FALSE)
@@ -666,8 +655,10 @@ scorecard_html <- function(md_path) {
   gsub('src="scorecard_chart.png"', 'src="pv_scorecard/scorecard_chart.png" style="max-width:100%"', html, fixed = TRUE)
 }
 
+# Scorecard page layout
 scorecardUI <- function(id) uiOutput(NS(id, "body"))
 
+# Serve the scorecard chart and render the page
 scorecardServer <- function(id, outputs) {
   moduleServer(id, function(input, output, session) {
     if (file.exists(outputs$scorecard$chart)) addResourcePath("pv_scorecard", dirname(outputs$scorecard$chart))

@@ -38,7 +38,7 @@ test_that("grades enter clamped and scaled, and pitchers without grades are kept
   f <- rows_fx()
   r <- training_rows(f$lines, f$signals, f$windows, f$parks, f$league, horizon = 1L, component = "k")
   full <- r[r$window == "full", ]
-  expect_equal(full$stuff[full$pitcher == 1 & full$base_season == 2023], 3)   # 95 -> clamped 80 -> (80-50)/10
+  expect_equal(full$stuff[full$pitcher == 1 & full$base_season == 2023], 3)  # 95 -> clamped 80 -> (80-50)/10
   expect_equal(full$has_grades[full$pitcher == 1 & full$base_season == 2023], 1)
   p9 <- full[full$pitcher == 9 & full$base_season == 2023, ]
   expect_equal(p9$has_grades, 0); expect_equal(p9$stuff, 0)
@@ -67,7 +67,7 @@ test_that("rest-of-season rows target to-date minus the window", {
   w <- r[r$window == "100", ]
   expect_equal(nrow(w), 1)
   expect_equal(w$events, 190); expect_equal(w$trials, 575)
-  expect_equal(w$stuff, 2)   # the window's own grade
+  expect_equal(w$stuff, 2)  # the window's own grade
 })
 
 test_that("newdata rows describe the latest season without a target", {

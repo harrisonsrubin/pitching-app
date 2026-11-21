@@ -99,11 +99,11 @@ test_that("release_upload_dir skips files already uploaded and batches the rest 
       c(sprintf("2026-04-01.parquet\t%d", same), "2026-04-02.parquet\t1") else character())
   release_upload_dir("raw/x", repo = "o/d", batch = 50)
   ups <- Filter(function(a) a[2] == "upload", calls)
-  expect_length(ups, 2)   # one per release
+  expect_length(ups, 2)  # one per release
   up26 <- Filter(function(a) "raw--x--2026" %in% a, ups)[[1]]
-  expect_false(any(grepl("2026-04-01.parquet", up26)))   # same size: skipped
-  expect_true(any(grepl("2026-04-02.parquet", up26)))    # size differs: re-sent
-  expect_true(any(grepl("2026-04-03.parquet", up26)))    # missing: sent
+  expect_false(any(grepl("2026-04-01.parquet", up26)))  # same size: skipped
+  expect_true(any(grepl("2026-04-02.parquet", up26)))  # size differs: re-sent
+  expect_true(any(grepl("2026-04-03.parquet", up26)))  # missing: sent
   expect_true("--clobber" %in% up26)
 })
 

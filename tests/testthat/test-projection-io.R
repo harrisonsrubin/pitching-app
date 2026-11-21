@@ -18,7 +18,7 @@ test_that("a projection run writes projections with names and both luck files", 
   expect_true(all(p$base_season == 2024L))
   l <- store_read(luck_key("MLB", 2024L))
   expect_true(nrow(l) > 0 && all(is.finite(l$gap)))
-  expect_equal(nrow(store_read(luck_key("AAA", 2024L))), 0L)   # MLB only: Triple-A results vs MLB-equivalent talent would not compare
+  expect_equal(nrow(store_read(luck_key("AAA", 2024L))), 0L)  # MLB only: AAA results don't compare to MLB-equivalent talent
 })
 
 test_that("trimming inputs drops seasons after the base season", {

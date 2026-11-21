@@ -1,18 +1,13 @@
-# True-talent projection (P3a): inputs, in-season windows and park factors, training rows, models,
-# simulation, aging, luck gap, and the projection run.
+# True-talent projection: inputs, park factors, models, simulation, aging and luck
 
-# ==== projection_data =====================================================================
-
-# P3a projection inputs (design: true-talent projection). Season lines from the Stats
-# API in the four components per batter faced (strikeouts, walks + HBP, home runs, hits
-# on balls in play), league environments, and each pitcher's pitch-model signals from
-# the published grade and component outputs.
+# Projection inputs
 
 PROJ_COMPONENTS <- c("k", "bbhbp", "hr", "hbip")
 
-# Trials for each component: batters faced, except hits on balls in play (per BIP).
+# Trials per component: batters faced, or balls in play for hits on BIP
 component_trials <- function(component) if (identical(component, "hbip")) "bip" else "tbf"
 
+# Season totals per pitcher, level and season; missing ages get the league median
 season_lines <- function(stats) {
   l <- stats %>%
     dplyr::group_by(pitcher = as.integer(player_id), season = as.integer(season), level) %>%
@@ -34,6 +29,7 @@ season_lines <- function(stats) {
     dplyr::select(pitcher, season, level, age, age_missing, tbf, k, bbhbp, hr, bip, hbip, outs, r, er, h, bb, hbp, gs_share)
 }
 
+# League rates, ER/R ratio, FIP constant and RA9 per season and level
 league_table <- function(lines) {
   lines %>%
     dplyr::group_by(season, level) %>%
@@ -46,6 +42,7 @@ league_table <- function(lines) {
     dplyr::select(season, level, lg_k, lg_bbhbp, lg_hr, lg_hbip, er_r, fip_const, lg_ra9)
 }
 
+# Season grades plus usage-weighted expected whiff, chase, strike, contact wOBA and GB
 pitch_signals <- function(grades, components) {
   g <- grades %>%
     dplyr::filter(pitch_type == "ALL", half == "full", facet %in% c("stuff", "location", "pitching")) %>%
@@ -64,23 +61,18 @@ pitch_signals <- function(grades, components) {
                   x_whiff, x_chase, x_cstrike, x_woba_contact, x_gb)
 }
 
-# ==== windows =============================================================================
-
-# P3a pipeline aggregates (design: builder-check rulings). Per pitcher and level-season:
-# component counts and grades after 100/250/500 pitches and season to date (so
-# rest-of-season projections train on the same input they get), and park factors for
-# runs, home runs and hits on balls in play. Both are aggregates, safe to publish.
+# In-season windows and park factors
 
 WINDOW_NS <- c(100L, 250L, 500L)
 BB_EVENTS <- c("walk", "intent_walk")
 HIT_BIP_EVENTS <- c("single", "double", "triple")
 
+# Store keys for window, park and park-sum files
 windows_key <- function(level, season) outputs_key(sprintf("windows_%s_%s.parquet", level, season))
 parks_key <- function(level, season) outputs_key(sprintf("parks_%s_%s.parquet", level, season))
 park_sums_key <- function(level, season) sprintf("processed/park_sums/%s/%s.parquet", level, season)
 
-# `pa` from pa_table() plus `key` (order_key); `cutoffs` (pitcher, cutoff) keeps PAs at
-# or before each pitcher's cutoff. Only completed PAs (an event) count as batters faced.
+# Component counts per pitcher, optionally only PAs at or before each pitcher's cutoff
 window_counts <- function(pa, cutoffs = NULL) {
   if (!is.null(cutoffs)) {
     pa <- dplyr::inner_join(pa, cutoffs, by = "pitcher")
@@ -97,8 +89,7 @@ window_counts <- function(pa, cutoffs = NULL) {
     dplyr::select(pitcher, tbf, k, bbhbp, hr, bip, hbip, fb, outs, runs)
 }
 
-# Window counts and window grades (re-fit on the pitches before each cutoff, as the P1
-# scorecard does) for 100/250/500 pitches and the season to date.
+# Counts and re-fit grades after 100/250/500 pitches and for the season to date
 window_stats <- function(run_pitches, pa, x, anchors, ns = WINDOW_NS) {
   pa$key <- order_key(pa$game_date, pa$game_pk, pa$at_bat_number)
   ab <- as.integer(vapply(strsplit(x$pitch_uid, "-", fixed = TRUE), `[`, "", 2))
@@ -123,8 +114,7 @@ window_stats <- function(run_pitches, pa, x, anchors, ns = WINDOW_NS) {
   dplyr::bind_rows(c(out, list(full))) %>% dplyr::relocate(pitcher, window)
 }
 
-# Per-season sums for park factors: each team's home totals at its venue and its road
-# totals. Stored per season so a 3-season window never has to reload old pitch files.
+# Each team's home and road totals per season, stored so old pitch files never reload
 park_sums <- function(pa, scores) {
   p <- pa %>% dplyr::left_join(dplyr::select(scores, game_pk, venue_id, home_team, away_team), by = "game_pk")
   per_game <- p %>%
@@ -135,15 +125,14 @@ park_sums <- function(pa, scores) {
   home <- per_game %>% dplyr::group_by(season, venue_id, team = home_team) %>%
     dplyr::summarise(dplyr::across(c(pa, hr, bip, hbip, runs), sum), games = dplyr::n(), .groups = "drop") %>%
     dplyr::mutate(side = "home")
-  # A team's road games: every game it played away (both teams' events, like the home side).
+  # Road side: every game the team played away, both teams' events
   road <- per_game %>% dplyr::group_by(season, team = away_team) %>%
     dplyr::summarise(dplyr::across(c(pa, hr, bip, hbip, runs), sum), games = dplyr::n(), .groups = "drop") %>%
     dplyr::mutate(side = "road", venue_id = NA_integer_)
   dplyr::bind_rows(home, road) %>% dplyr::select(season, venue_id, team, side, pa, hr, bip, hbip, runs, games)
 }
 
-# Park factors per venue-season from the stored sums of seasons s-2..s (whatever is
-# available): home rate over the home team's road rate, regressed halfway to 1.
+# Venue factors, seasons s-2..s: home rate over the team's road rate, regressed halfway
 component_park_factors <- function(sums) {
   home <- sums[sums$side == "home", ]
   vs <- dplyr::distinct(home, venue_id, season)
@@ -163,8 +152,7 @@ component_park_factors <- function(sums) {
   dplyr::bind_rows(out)
 }
 
-# Each pitcher's park factors: plate-appearance-weighted over the parks he pitched in;
-# a park without a factor counts as neutral (1).
+# PA-weighted park factors over the parks each pitcher threw in; missing parks count as 1
 pitcher_parks <- function(pa, scores, cpf) {
   pa %>%
     dplyr::filter(!is.na(events)) %>%
@@ -175,8 +163,7 @@ pitcher_parks <- function(pa, scores, cpf) {
                      ppf_hbip = mean(dplyr::coalesce(pf_hbip, 1)), .groups = "drop")
 }
 
-# Windows and park files for one level-season (called from build_outputs()). Loads the
-# raw run pitches once and frees them before returning (8 GB).
+# Write park and window files for one level-season, then free the raw pitches
 write_projection_aggregates <- function(level, season, x_key, anchors) {
   rp <- load_run_pitches(level, season)
   pa <- pa_table(rp)
@@ -192,27 +179,17 @@ write_projection_aggregates <- function(level, season, x_key, anchors) {
   invisible(TRUE)
 }
 
+# Seasons that already have a stored file for this key
 stored_seasons_with <- function(key_fn, level) {
   s <- 2000:2100
   s[vapply(s, function(y) store_exists(key_fn(level, y)), TRUE)]
 }
 
-# ==== aging ===============================================================================
-
-# P3a aging (design: aging from within-pitcher changes). For each component, the mean
-# change in logit rate from age a to a+1 among MLB pitchers seen in consecutive seasons,
-# weighted by the harmonic mean of the two seasons' trials, then smoothed and summed into
-# a curve that is 0 at age 27.
-#
-# Survivor correction (builder's choice, Lichtman-style "phantom season"): a pitcher with
-# a qualifying season s who has no qualifying season s+1, while season s+1 exists in the
-# data, left the league or the sample. He gets an imputed next season equal to his
-# age group's mean change minus half that group's SD of changes, so the decline of
-# pitchers who disappear is not lost. Careers that end at the last season in the data are
-# censored, not dropouts, and get nothing imputed.
+# Aging
 
 AGE_RANGE <- 20:42
 
+# Mean year-to-year logit change by age, weighted by trials
 aging_deltas <- function(lines, component, min_tbf = 100, correct = TRUE) {
   tcol <- component_trials(component)
   l <- lines[lines$level == "MLB" & lines[[tcol]] >= min_tbf, ]
@@ -225,6 +202,7 @@ aging_deltas <- function(lines, component, min_tbf = 100, correct = TRUE) {
   by_age <- pairs %>% dplyr::group_by(age) %>%
     dplyr::summarise(m = stats::weighted.mean(delta, w), s = stats::sd(delta), .groups = "drop")
   if (correct) {
+  # Pitchers who vanish get their age group's mean change minus half an SD
     last_season <- max(lines$season)
     drops <- dplyr::anti_join(l, nxt, by = c("pitcher", "season")) %>%
       dplyr::filter(season < last_season) %>%
@@ -238,6 +216,7 @@ aging_deltas <- function(lines, component, min_tbf = 100, correct = TRUE) {
     dplyr::filter(!is.na(delta))
 }
 
+# Smooth the age deltas and sum them into a curve that is 0 at age 27
 aging_curve <- function(lines, component, correct = TRUE) {
   d <- aging_deltas(lines, component, correct = correct)
   fit <- stats::lm(delta ~ splines::ns(age, df = 4), data = d, weights = n)
@@ -252,29 +231,20 @@ aging_curve <- function(lines, component, correct = TRUE) {
   tibble::tibble(age = ages, cum = unname(cum))
 }
 
-# ==== projection_rows =====================================================================
+# Training and projection rows
 
-# P3a training and projection rows (no leakage: every predictor comes from seasons up to
-# the base season; rest-of-season rows see only the partial window of the current season).
-#
-# Past results are pooled over the base season and the two before it (weights 5/4/3 per
-# trial) across MLB and Triple-A, each relative to its own league, as a logit padded with
-# league-rate trials (PAST_PRIOR_W) so it stays finite and bounded. Home runs and hits on balls in play are
-# divided by the pitcher's park factor first. Grades are capped 20-80 and scaled to
-# (grade - 50) / 10; a pitcher without grades gets zeros and has_grades = 0.
-
+# Weights for the base season and the two before it
 RECENCY_W <- c(5, 4, 3)
-# League-rate padding for past results, in weighted trials (= 20 batters at weight 5). It
-# keeps rare events (a reliever with no home runs) from producing extreme logits; the
-# past_rel x sample-size interaction still lets large samples dominate.
+# League-rate padding so rare events (a reliever with no HR) don't give extreme logits
 PAST_PRIOR_W <- 100
 SIGNAL_GRADES <- c("stuff", "location", "pitching")
 SIGNAL_X <- c("x_whiff", "x_chase", "x_cstrike", "x_woba_contact", "x_gb")
 TRAIN_WINDOWS <- c("100", "250", "500")
 
+# Park factor column for components that get park-adjusted
 park_col <- function(component) switch(component, hr = "ppf_hr", hbip = "ppf_hbip", NA_character_)
 
-# Lines with `ev` (park-adjusted events), `tr` (trials) and `lg` (own-league rate).
+# Park-adjusted events, trials and own-league rate per line
 component_lines <- function(lines, parks, league, component) {
   tcol <- component_trials(component); pcol <- park_col(component)
   l <- lines %>%
@@ -286,9 +256,7 @@ component_lines <- function(lines, parks, league, component) {
     dplyr::select(pitcher, season, level, age, gs_share, tbf, ev, tr, lg)
 }
 
-# History features for (pitcher, base_season) pairs. `offsets` are the seasons back from
-# the base that count (0 = the base season itself); `extra` adds partial-season counts
-# (pitcher, base_season, ev, tr, lg, level) at weight 5.
+# Recency-weighted past results vs league, plus age, role and Triple-A share
 history_features <- function(cl, bases, offsets = 0:2, extra = NULL) {
   h <- dplyr::bind_rows(lapply(offsets, function(o)
     cl %>% dplyr::mutate(base_season = season + o, w = RECENCY_W[o + 1]) %>%
@@ -310,7 +278,7 @@ history_features <- function(cl, bases, offsets = 0:2, extra = NULL) {
                   aaa_share = dplyr::coalesce(aaa_share, 0), gs_share = dplyr::coalesce(gs_share, 0))
 }
 
-# Signals at the base season (MLB row preferred), scaled; zeros when absent.
+# Base-season signals (MLB row first), grades scaled to (g - 50) / 10, zero when missing
 signal_features <- function(signals, bases, grade_override = NULL) {
   s <- signals %>% dplyr::mutate(pref = ifelse(level == "MLB", 1L, 2L)) %>%
     dplyr::arrange(pitcher, season, pref) %>% dplyr::distinct(pitcher, season, .keep_all = TRUE) %>%
@@ -325,11 +293,13 @@ signal_features <- function(signals, bases, grade_override = NULL) {
     dplyr::across(dplyr::all_of(SIGNAL_X), ~ ifelse(is.na(.x) | has_grades == 0, 0, .x)))
 }
 
+# MLB league logit rate for each season
 lg_logit_of <- function(league, component, seasons) {
   lg <- league[league$level == "MLB", ]
   stats::qlogis(lg[[paste0("lg_", component)]][match(seasons, lg$season)])
 }
 
+# Training rows: target-season results with features from the base season and earlier
 training_rows <- function(lines, signals, windows, parks, league, horizon, component) {
   cl <- component_lines(lines, parks, league, component)
   if (horizon >= 1) {
@@ -347,8 +317,7 @@ training_rows <- function(lines, signals, windows, parks, league, horizon, compo
     dplyr::filter(!is.na(lg_logit)) %>% finish_rows()
 }
 
-# Rest-of-season rows: history = the two prior seasons + the partial window (weight 5);
-# target = season to date minus the window; grades are the window's own.
+# Rest-of-season rows: prior seasons plus the partial window, target is the remainder
 window_training_rows <- function(cl, signals, windows, parks, league, component) {
   if (is.null(windows) || !nrow(windows)) return(tibble::tibble())
   w <- windows[windows$level == "MLB", ]
@@ -382,6 +351,7 @@ window_training_rows <- function(cl, signals, windows, parks, league, component)
   dplyr::bind_rows(out)
 }
 
+# Drop rows without a target age and keep the model columns
 finish_rows <- function(r) {
   if (!nrow(r)) return(r)
   r %>% dplyr::filter(!is.na(age_target)) %>%
@@ -390,7 +360,7 @@ finish_rows <- function(r) {
                   age_target, gs_share, aaa_share)
 }
 
-# Rows to project from the base season (no target). Every pitcher with a line that season.
+# Rows to project for every pitcher with a line in the base season
 newdata_rows <- function(lines, signals, parks, league, base_season, horizon, component) {
   cl <- component_lines(lines, parks, league, component)
   bases <- dplyr::distinct(cl[cl$season == base_season, ], pitcher, base_season = season)
@@ -401,23 +371,15 @@ newdata_rows <- function(lines, signals, parks, league, base_season, horizon, co
     finish_rows()
 }
 
-# ==== projection_model ====================================================================
+# Component models
 
-# P3a component models (design approach B: lme4 + simulation). One binomial GLMM per
-# component and horizon, forecasting target-season rates from information through the
-# base season:
-#   logit p = league(target) + f(past results, their sample size) + grade signals
-#             + age spline + role + Triple-A share [+ window] + pitcher + pitcher-season change
-# The past_rel x log1p(past_trials) interaction lets the weight on results grow with the
-# sample, estimated rather than hand-set. The pitcher-season effect is the year-to-year
-# talent change (plus season-level overdispersion) that the simulation carries forward.
-
+# Pitch-model terms in the model
 GRADE_TERMS <- c("has_grades", "stuff", "location", "pitching", "x_whiff", "x_chase", "x_cstrike", "x_woba_contact", "x_gb")
-# For the stuff-vs-results weight: only terms that carry a pitcher's quality count (not the
-# has-grades indicator or the sample size on their own).
+# Quality terms on each side of the stuff vs results weight
 SIGNAL_WEIGHT_TERMS <- setdiff(GRADE_TERMS, "has_grades")
 RESULT_WEIGHT_TERMS <- c("past_rel", "past_rel:log1p(past_trials)", "past_rel:aaa_share")
 
+# GLMM formula, keeping only terms that vary in the data
 component_formula <- function(rows) {
   varies <- function(v) v %in% names(rows) && length(unique(rows[[v]])) > 1
   terms <- c("past_rel * log1p(past_trials)",
@@ -429,16 +391,15 @@ component_formula <- function(rows) {
                           "+ (1 | pitcher) + (1 | pitcher_season)"))
 }
 
+# Fit one binomial GLMM for a component and horizon
 fit_component <- function(rows, component) {
   rows <- rows[rows$trials >= 1 & !is.na(rows$events), ]
-  rows$events <- pmin(round(rows$events), rows$trials)    # park-adjusted counts are not integers
+  rows$events <- pmin(round(rows$events), rows$trials)  # park-adjusted counts are not integers
   rows$trials <- round(rows$trials)
-  # The season-change effect groups on one combined pitcher-season key: an interaction
-  # with a one-level season factor (a single training season) breaks predict().
+  # One combined pitcher-season key; a one-level season factor breaks predict()
   rows$pitcher_season <- paste(rows$pitcher, rows$target_season, sep = "_")
   if ("window" %in% names(rows)) rows$window <- factor(rows$window)
-  # The league offset is centered (the intercept absorbs its mean): glmer's PIRLS fails
-  # to converge with a raw offset far from 0 (about -3.5 for home runs).
+  # Center the league offset so glmer converges
   lg_center <- mean(rows$lg_logit)
   rows$lg_off <- rows$lg_logit - lg_center
   f <- component_formula(rows)
@@ -451,10 +412,7 @@ fit_component <- function(rows, component) {
   m
 }
 
-# How uncertain the talent of a pitcher the fit has not seen is, given his past sample:
-# on the training rows, the squared error of the fixed-effects prediction (no pitcher
-# effect, i.e. as if unseen) minus binomial noise and the season-change variance, by
-# bins of past trials, fitted as v(n) = a * kk / (kk + n) (large for small samples).
+# Talent variance for unseen pitchers by past sample size, fit as a * kk / (kk + n)
 fit_uncertainty <- function(m, rows) {
   pr <- stats::predict(m$fit, re.form = NA, type = "link")
   p <- stats::plogis(pr)
@@ -463,6 +421,7 @@ fit_uncertainty <- function(m, rows) {
   bins <- dplyr::ntile(rows$past_trials, 10)
   b <- tibble::tibble(n = rows$past_trials, e = excess, bin = bins) %>% dplyr::group_by(bin) %>%
     dplyr::summarise(n = stats::median(n), e = mean(e), w = dplyr::n(), .groups = "drop")
+  # Grid search kk, solve a by least squares
   best <- c(a = 0, kk = 100); best_sse <- Inf
   for (kk in 10^seq(1, 4, by = 0.1)) {
     x <- kk / (kk + b$n)
@@ -473,11 +432,13 @@ fit_uncertainty <- function(m, rows) {
   best
 }
 
+# Talent variance for a pitcher the fit hasn't seen
 talent_uncertainty <- function(m, past_trials) {
   if (is.null(m$unc)) return(rep(0, length(past_trials)))
   m$unc[["a"]] * m$unc[["kk"]] / (m$unc[["kk"]] + past_trials)
 }
 
+# Add the keys and offset the model expects to new rows
 prep_newdata <- function(m, newdata) {
   newdata$pitcher_season <- paste(newdata$pitcher, newdata$target_season, sep = "_")
   newdata$lg_off <- newdata$lg_logit - m$lg_center
@@ -486,13 +447,13 @@ prep_newdata <- function(m, newdata) {
   newdata
 }
 
-# True-talent logit for each row: fixed part + the pitcher's own effect (0 for a pitcher
-# the fit never saw). The season-change effect is left out (the simulation draws it).
+# Talent logit: fixed part plus the pitcher's own effect, no season change
 predict_component <- function(m, newdata) {
   stats::predict(m$fit, newdata = prep_newdata(m, newdata), re.form = ~ (1 | pitcher),
                  allow.new.levels = TRUE, type = "link")
 }
 
+# Fixed-effects design matrix for new rows
 fixed_design <- function(m, newdata) {
   nd <- prep_newdata(m, newdata)
   nd$events <- 0; nd$trials <- 1
@@ -501,71 +462,63 @@ fixed_design <- function(m, newdata) {
   X[, colnames(X) %in% names(lme4::fixef(m$fit)), drop = FALSE]
 }
 
-# Share of how far a row's estimate moved from the typical training pitcher that comes
-# from the pitch-model signals rather than from his results: each part is measured from
-# the training means, |signals| / (|signals| + |results|), 0 when neither moves it.
+# Share of a pitcher's estimate driven by pitch-model signals rather than results
 stuff_weight <- function(m, newdata) {
   X <- fixed_design(m, newdata); b <- lme4::fixef(m$fit)[colnames(X)]
   mu <- if (!is.null(m$x_means)) m$x_means[colnames(X)] else rep(0, ncol(X))
   Xc <- sweep(X, 2, mu)
   part <- function(cols) { k <- colnames(Xc) %in% cols; if (!any(k)) rep(0, nrow(Xc)) else as.vector(Xc[, k, drop = FALSE] %*% b[k]) }
   g <- abs(part(SIGNAL_WEIGHT_TERMS)); r <- abs(part(RESULT_WEIGHT_TERMS))
-  if ("has_grades" %in% names(newdata)) g[newdata$has_grades == 0] <- 0   # no signals, nothing from them
+  if ("has_grades" %in% names(newdata)) g[newdata$has_grades == 0] <- 0  # no signals
   ifelse(g + r > 0, g / (g + r), 0)
 }
 
+# Variance of the pitcher-season change effect
 change_variance <- function(m) {
   vc <- as.data.frame(lme4::VarCorr(m$fit))
   v <- vc$vcov[vc$grp == "pitcher_season"]
   if (length(v)) v else 0
 }
 
+# Variance of the pitcher effect
 pitcher_variance <- function(m) {
   vc <- as.data.frame(lme4::VarCorr(m$fit))
   vc$vcov[vc$grp == "pitcher"]
 }
 
-# ==== projection_sim ======================================================================
+# Simulation
 
-# P3a simulation (design: uncertainty, true talent grade, bet, Step odds, basis). From the
-# component models: n_draws joint draws of each pitcher's true-talent rates now and 1-5
-# seasons out, then RA9 (fitted runs map), park-neutral ERA and FIP, the 20-80 true
-# talent grade, the 10-chip bet, and Step forward / Step back odds.
-#
-# One draw = fixed effects from MVN(fixef, vcov) + the pitcher's own talent (conditional
-# mode + noise from its conditional variance and the sample-size uncertainty, shared by
-# today and every future season of the draw) + one season-change effect per future
-# season (variance of the pitcher:season term). "Today"
-# is the one-year model at the current age with no change; next season adds the aging
-# step and one change. Seasons 3-5 extend the two-year model with the aging curve.
-
+# ERA change that counts as a step forward or back
 STEP_RUNS <- 0.75
-# Forecasting targets start where park factors do (design: MLB 2010-2019 feed the aging
-# curve and past-results history only).
+# Forecast targets start in 2020, when park factors begin
 PROJ_MIN_TARGET <- 2020L
-# Season 2: "model" = the two-year model; "step" = next season stepped forward with the
-# aging curve (as seasons 3-5 are). Chosen by the P3 scorecard's two-seasons-out test.
+# Season 2 method: the two-year model, or next season stepped with the aging curve
 PROJ_H2_METHOD <- "model"
 CHIP_PROBS <- seq(0.05, 0.95, by = 0.1)
 
+# Ten chip values: grade quantiles at 5%, 15%, ..., 95%, capped 20-80
 chips <- function(grade_draws) {
   q <- stats::quantile(grade_draws, CHIP_PROBS, names = FALSE, na.rm = TRUE)
   pmin(pmax(q, 20), 80)
 }
 
+# RA9 to the 20-80 true talent grade
 tt_grade <- function(ra9, anchors) pmin(pmax(50 - 10 * (ra9 - anchors$mean[1]) / anchors$unit[1], 20), 80)
 
+# Share of draws where ERA moves by at least STEP_RUNS either way
 step_odds <- function(era_now, era_next) {
   d <- era_next - era_now
   c(forward = mean(d <= -STEP_RUNS), back = mean(d >= STEP_RUNS))
 }
 
+# MLB-equivalent basis when most of the base season was in Triple-A
 basis_of <- function(lines, base_season) {
   lines[lines$season == base_season, ] %>% dplyr::group_by(pitcher) %>%
     dplyr::summarise(aaa = sum(tbf[level == "AAA"]), all = sum(tbf), .groups = "drop") %>%
     dplyr::transmute(pitcher, basis = ifelse(aaa > 0.5 * all, "MLB-equivalent", "MLB"))
 }
 
+# Add any missing signal columns and fix key types
 ensure_signal_cols <- function(signals) {
   for (v in c("level", SIGNAL_GRADES, SIGNAL_X)) if (!v %in% names(signals))
     signals[[v]] <- if (v == "level") character(nrow(signals)) else numeric(nrow(signals))
@@ -573,6 +526,7 @@ ensure_signal_cols <- function(signals) {
   signals
 }
 
+# Fit every component model per horizon (0 = rest of season when windows exist)
 fit_projection_models <- function(lines, signals, windows, parks, league, horizons = 1:2) {
   signals <- ensure_signal_cols(signals)
   hs <- c(if (!is.null(windows) && nrow(windows)) 0L, as.integer(horizons))
@@ -584,8 +538,7 @@ fit_projection_models <- function(lines, signals, windows, parks, league, horizo
   }), PROJ_COMPONENTS)
 }
 
-# Runs map: park-adjusted RA9 on the four rates, MLB pitcher-seasons with 50+ IP,
-# weighted by outs.
+# Runs map: park-adjusted RA9 on the four rates, MLB seasons with 50+ IP, outs-weighted
 fit_runs_map <- function(lines, parks) {
   l <- lines[lines$level == "MLB" & lines$outs >= 150 & lines$bip > 0, ]
   if (!is.null(parks) && nrow(parks)) {
@@ -596,27 +549,29 @@ fit_runs_map <- function(lines, parks) {
   stats::lm(ra9_adj ~ k_r + bbhbp_r + hr_r + babip, data = l, weights = outs)
 }
 
-# Season-level RA9 error the four rates do not explain (sequencing, defense, timing): the
-# runs map's residual SD per unit weight (weights = outs), scaled to a season of `outs`.
+# Season RA9 noise the four rates don't explain, scaled to a season of `outs`
 runs_noise_sd <- function(map, outs) stats::sigma(map) / sqrt(pmax(outs, 1))
 
+# RA9 from the runs map, floored at 0.5
 ra9_from_rates <- function(map, k, bbhbp, hr, hbip) {
   b <- stats::coef(map)
   pmax(b[["(Intercept)"]] + b[["k_r"]] * k + b[["bbhbp_r"]] * bbhbp + b[["hr_r"]] * hr + b[["babip"]] * hbip, 0.5)
 }
 
+# FIP from per-batter rates
 fip_from_rates <- function(k, bbhbp, hr, hbip, fip_const) {
   hits <- hr + hbip * pmax(1 - k - bbhbp - hr, 0)
   ip_pt <- pmax(1 - bbhbp - hits, 0.05) / 3
   (13 * hr + 3 * bbhbp - 2 * k) / ip_pt + fip_const
 }
 
-# Fixed part (n x n_draws) under coefficient draws B, plus the centered league offset.
+# Fixed part under coefficient draws B, plus the centered league offset
 fixed_draws <- function(m, nd, B) {
   X <- fixed_design(m, nd)
   X %*% t(B[, colnames(X), drop = FALSE]) + (nd$lg_logit - m$lg_center)
 }
 
+# Draws of the fixed-effect coefficients
 coef_draws <- function(m, n_draws) {
   b <- lme4::fixef(m$fit); V <- as.matrix(stats::vcov(m$fit))
   B <- MASS::mvrnorm(n_draws, b, V)
@@ -624,10 +579,7 @@ coef_draws <- function(m, n_draws) {
   B
 }
 
-# The pitcher's own talent beyond the fixed part, shared by "today" and every future
-# season of the same draw. A pitcher the fit has seen: his effect's conditional mode and
-# variance. One it has not (e.g. a rookie): 0, with the sample-size-dependent
-# uncertainty (talent_uncertainty), never below the pitcher variance.
+# Pitcher talent draws shared across seasons; unseen pitchers get sample-size uncertainty
 pitcher_draws <- function(m, nd, n_draws) {
   re <- lme4::ranef(m$fit, condVar = TRUE)$pitcher
   pv <- attr(re, "postVar")
@@ -638,10 +590,12 @@ pitcher_draws <- function(m, nd, n_draws) {
   mu + sqrt(v) * matrix(stats::rnorm(nrow(nd) * n_draws), nrow(nd))
 }
 
+# Row-wise 5th percentile, 95th percentile and median
 q5 <- function(M) apply(M, 1, stats::quantile, 0.05, names = FALSE, na.rm = TRUE)
 q95 <- function(M) apply(M, 1, stats::quantile, 0.95, names = FALSE, na.rm = TRUE)
 qmed <- function(M) apply(M, 1, stats::median, na.rm = TRUE)
 
+# Simulate each pitcher now and 1-5 seasons out: rates, ERA, FIP, grade, chips, Step odds
 project_pitchers <- function(models, lines, signals, parks, league, base_season, map, anchors, curves,
                              n_draws = 1000L, seed = 1L, keep_draws = FALSE, h2_method = PROJ_H2_METHOD) {
   set.seed(seed)
@@ -678,6 +632,7 @@ project_pitchers <- function(models, lines, signals, parks, league, base_season,
     })
     now[[cpt]] <- stats::plogis(e_now)
   }
+  # Simulated season outcomes at last season's workload (at least 150 TBF)
   tbf_last <- lines[lines$season == base_season, ] %>% dplyr::group_by(pitcher) %>%
     dplyr::summarise(tbf = sum(tbf), .groups = "drop")
   tbf_out <- pmax(tbf_last$tbf[match(ids, tbf_last$pitcher)], 150, na.rm = TRUE)
@@ -729,8 +684,7 @@ project_pitchers <- function(models, lines, signals, parks, league, base_season,
   res
 }
 
-# Point estimate of each pitcher's talent RA9 as of the base season (the one-year model at
-# his current age, no change, no noise): what the frozen grade anchors are built from.
+# Talent RA9 point estimate at the base season, used to build grade anchors
 talent_point <- function(models, lines, signals, parks, league, base_season, map) {
   signals <- ensure_signal_cols(signals)
   lg <- league[league$level == "MLB" & league$season == base_season, ]
@@ -745,8 +699,7 @@ talent_point <- function(models, lines, signals, parks, league, base_season, map
   t
 }
 
-# 20-80 anchors for the true talent grade: mean and SD of talent RA9 among MLB pitchers
-# with 50+ IP in the given base seasons (2023-2025 for the frozen file).
+# Grade anchors: mean and SD of talent RA9 among MLB pitchers with 50+ IP
 projection_anchors <- function(points, lines, seasons) {
   q <- lines[lines$level == "MLB" & lines$season %in% seasons & lines$outs >= 150, c("pitcher", "season")]
   x <- dplyr::inner_join(points, q, by = c("pitcher", "season"))
@@ -754,31 +707,22 @@ projection_anchors <- function(points, lines, seasons) {
 }
 
 PROJECTION_ANCHORS_FILE <- "projection_anchors.csv"
+# Frozen anchors from models/
 read_projection_anchors <- function() {
   readr::read_csv(file.path(repo_root(), "models", PROJECTION_ANCHORS_FILE), show_col_types = FALSE)
 }
 
-# ==== luck ================================================================================
+# Luck gap
 
-# P3a luck gap (design: actual ERA minus expected, attributed to BABIP, strand rate and
-# HR/FB). Expected ERA = the runs map at the pitcher's true-talent rates, put in his parks
-# (home runs and hits on balls in play scaled by his park factors, runs by his run park
-# factor), times the league's earned/total run ratio. MLB only: Triple-A results do not
-# compare with MLB-equivalent talent. Pieces, in ERA:
-#   babip  = runs-map BABIP slope x (actual - expected BABIP)
-#   hr_fb  = runs-map HR slope x (actual - expected HR rate): home runs beyond his talent,
-#            shown only where Statcast fly-ball counts exist (else NA, folded into other)
-#   strand = runs from stranding more or fewer runners than his K and BB+HBP rates predict
-#   other  = the rest (sequencing, defense, unearned runs, runs-map error), so the pieces
-#            always add up to the gap.
+LUCK_MIN_OUTS <- 60L  # 20 innings: below that one bad outing is the whole "gap"
 
-LUCK_MIN_OUTS <- 60L   # 20 innings: below that one bad outing is the whole "gap"
-
+# Left-on-base rate
 lob_pct <- function(h, bb, hbp, r, hr) {
   den <- h + bb + hbp - 1.4 * hr
   ifelse(den > 0, (h + bb + hbp - r) / den, NA_real_)
 }
 
+# Expected strand rate from K and BB+HBP rates
 fit_strand <- function(lines) {
   l <- lines[lines$level == "MLB" & lines$outs >= 150, ]
   l$lob <- lob_pct(l$h, l$bb, l$hbp, l$r, l$hr)
@@ -786,6 +730,7 @@ fit_strand <- function(lines) {
   stats::lm(lob ~ k_rate + bbhbp_rate, data = l[is.finite(l$lob), ], weights = outs)
 }
 
+# Actual minus expected ERA, split into BABIP, strand, HR/FB and other
 luck_gap <- function(line, expected, map, er_r, strand, fb = NULL, parks = NULL) {
   b <- stats::coef(map)
   d <- line %>% dplyr::filter(outs >= LUCK_MIN_OUTS) %>%
@@ -808,18 +753,14 @@ luck_gap <- function(line, expected, map, er_r, strand, fb = NULL, parks = NULL)
     dplyr::select(pitcher, season, level, actual_era, expected_era, gap, babip, strand, hr_fb, other)
 }
 
-# ==== projection_io =======================================================================
+# Projection run
 
-# P3a projection run (design: pipeline). Reads only stored Stats API season lines and
-# published outputs, fits, simulates, and writes:
-#   outputs/projections_<season>.parquet   one row per pitcher x horizon (1-5)
-#   outputs/luck_<level>_<season>.parquet  the luck gap for the base season
-# In CI, run.R project first downloads the season lines and the published outputs.
-
+# Store keys for projection and luck outputs
 projections_key <- function(season) outputs_key(sprintf("projections_%s.parquet", season))
 luck_key <- function(level, season) outputs_key(sprintf("luck_%s_%s.parquet", level, season))
 projection_keys <- function(season) c(projections_key(season), luck_key("MLB", season), luck_key("AAA", season))
 
+# Read published MLB/AAA output files through a season, tagged with level and season
 read_tagged_store <- function(prefix, through) {
   f <- list.files(store_path("outputs"), pattern = sprintf("^%s_(MLB|AAA)_\\d{4}\\.parquet$", prefix), full.names = TRUE)
   dplyr::bind_rows(lapply(f, function(p) {
@@ -829,6 +770,7 @@ read_tagged_store <- function(prefix, through) {
   }))
 }
 
+# Load season lines, league table, signals, windows, parks and names through a season
 projection_inputs <- function(through) {
   keys <- c(sprintf("raw/statsapi/pitching/MLB/%s.parquet", 2010:through),
             sprintf("raw/statsapi/pitching/AAA/%s.parquet", 2023:through))
@@ -841,12 +783,13 @@ projection_inputs <- function(through) {
        pitchers = read_tagged_store("pitchers", through))
 }
 
+# Drop rows after the given season
 trim_inputs <- function(inp, season) {
   cut <- function(d) if (is.null(d) || !nrow(d)) d else d[d$season <= season, ]
   lapply(inp, cut)
 }
 
-# Everything after the inputs: models, runs map, aging curves, simulation, luck.
+# Fit, simulate and compute luck from loaded inputs
 run_projection_from <- function(inp, season, anchors, n_draws = 1000L, seed = 1L) {
   t0 <- Sys.time()
   i <- trim_inputs(inp, season)
@@ -862,7 +805,7 @@ run_projection_from <- function(inp, season, anchors, n_draws = 1000L, seed = 1L
   lg <- i$league[i$league$level == "MLB" & i$league$season == season, ]
   strand <- fit_strand(i$lines)
   luck <- lapply(c("MLB", "AAA"), function(lv) {
-    if (lv == "AAA") return(NULL)   # Triple-A results vs MLB-equivalent talent would not compare
+    if (lv == "AAA") return(NULL)  # AAA results don't compare with MLB-equivalent talent
     line <- i$lines[i$lines$level == lv & i$lines$season == season, ]
     pk <- if (!is.null(i$parks) && nrow(i$parks)) i$parks[i$parks$level == lv & i$parks$season == season, ] else NULL
     fb <- if (!is.null(i$windows) && nrow(i$windows)) i$windows[i$windows$level == lv & i$windows$season == season &
@@ -876,6 +819,7 @@ run_projection_from <- function(inp, season, anchors, n_draws = 1000L, seed = 1L
   list(projections = proj, luck = luck)
 }
 
+# Write projections and luck files, with empty luck tables where missing
 write_projection_outputs <- function(res, season) {
   store_write(res$projections, projections_key(season))
   for (lv in c("MLB", "AAA")) {
@@ -888,11 +832,10 @@ write_projection_outputs <- function(res, season) {
   invisible(projection_keys(season))
 }
 
+# Published outputs the projection reads
 PROJECTION_OUTPUT_PREFIXES <- c("grades", "components", "windows", "parks", "pitchers")
 
-# CI: the Stats API season lines from the data repo, and the published outputs the fit
-# reads from the app's public release (with the app repo's token; the data token is
-# limited to the data repo). Any failed download stops the run.
+# CI: download season lines and published outputs; any failed download stops the run
 fetch_projection_inputs <- function(data_repo, app_repo, app_token = NULL) {
   for (lv in c("MLB", "AAA")) release_download_dir(sprintf("raw/statsapi/pitching/%s", lv), data_repo)
   dir.create(store_path("outputs"), recursive = TRUE, showWarnings = FALSE)
@@ -904,8 +847,7 @@ fetch_projection_inputs <- function(data_repo, app_repo, app_token = NULL) {
   invisible(TRUE)
 }
 
-# The projection must not run (and publish) on partial inputs: the base season's MLB
-# grades, components, windows, parks and pitcher index have to be there.
+# Stop if any base-season MLB input is missing so we never publish on partial data
 check_projection_inputs <- function(season) {
   keys <- outputs_key(sprintf("%s_MLB_%s.parquet", PROJECTION_OUTPUT_PREFIXES, season))
   missing <- keys[!store_exists(keys)]

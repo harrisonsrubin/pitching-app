@@ -1,15 +1,10 @@
-# Projection pages: the Grades card block, Player Projections and League Projections.
+# Projection card on Grades, plus Player and League Projections pages
 
-# ==== projection ======================================================================
-
-# Projection (P3a): the true-talent projection on the Grades card, and a Player Projections page
-# with the 1-5 season outlook, component rates, how much the pitch model versus results
-# moved the estimate, and the luck gap. ERA and FIP are park-neutral; the outlook table
-# also shows ERA in his current home park.
-
+# Player projections
 STEP_TIP <- "Chance his true-talent ERA next season is at least 0.75 runs better (Step forward) or worse (Step back) than today, about a full grade."
 LUCK_TIP <- "Actual ERA minus the ERA his true-talent rates predict. Positive means results ran worse than his talent (unlucky)."
 
+# A pitcher's projection rows if they're based on this season
 pitcher_projection <- function(proj, pitcher, season) {
   if (is.null(proj) || !nrow(proj)) return(NULL)
   p <- proj[proj$pitcher == pitcher, ]
@@ -17,18 +12,19 @@ pitcher_projection <- function(proj, pitcher, season) {
   p[order(p$horizon), ]
 }
 
+# Signed number, dash for NA
 signed <- function(x, digits = 2) ifelse(is.na(x), "–", sprintf(paste0("%+.", digits, "f"), x))
 
 CHIP_RUNGS <- seq(20, 80, 5)
 
-# The 10 chips counted onto the 20-80 grade steps (each chip to its nearest step).
+# Count the 10 chips at each 20-80 grade step
 chip_counts <- function(ch) {
   ch <- ch[!is.na(ch)]
   r <- pmin(pmax(round(ch / 5) * 5, 20), 80)
   stats::setNames(vapply(CHIP_RUNGS, function(g) sum(r == g), 0), as.character(CHIP_RUNGS))
 }
 
-# Bars at each grade step, height by chips (count on top, step below), in grade colors.
+# Chip bar chart colored by grade
 bet_bars <- function(ch) {
   n <- chip_counts(ch)
   if (sum(n) == 0) return(NULL)
@@ -44,6 +40,7 @@ bet_bars <- function(ch) {
   }))
 }
 
+# One stat tile
 proj_stat <- function(label, value, sub = NULL, tip = NULL) {
   shiny::div(class = "pv-stat", title = tip,
              shiny::div(class = "pv-stat-label", label),
@@ -51,6 +48,7 @@ proj_stat <- function(label, value, sub = NULL, tip = NULL) {
              if (!is.null(sub)) shiny::div(class = "pv-stat-sub", sub))
 }
 
+# Projection block for the Grades card
 projection_card <- function(proj, luck, pitcher, level, season) {
   p <- pitcher_projection(proj, pitcher, season)
   if (is.null(p)) return(NULL)
@@ -83,6 +81,7 @@ projection_card <- function(proj, luck, pitcher, level, season) {
     luck_row)
 }
 
+# Multi-season outlook table
 outlook_table <- function(p) {
   rng <- function(x, lo, hi) sprintf("%.2f (%.2f–%.2f)", x, lo, hi)
   tibble::tibble(Season = as.character(p$target_season), ERA = rng(p$era, p$era_lo, p$era_hi),
@@ -92,6 +91,7 @@ outlook_table <- function(p) {
                  `Home-park ERA` = sprintf("%.2f", p$era_home))
 }
 
+# Player Projections page
 projectionUI <- function(id) {
   ns <- NS(id)
   tagList(uiOutput(ns("head")), uiOutput(ns("message")),
@@ -149,11 +149,9 @@ projectionServer <- function(id, outputs, sel) {
   })
 }
 
-# ==== projections =====================================================================
+# League projections
 
-# Projections: next-season (base season + 1) projections for every projected pitcher,
-# sortable, with team, level-basis and innings filters. A row click opens that pitcher.
-
+# Next-season projections for every pitcher, filtered by basis, team and innings
 projections_table <- function(proj, pitchers, basis = "All", team = "All", min_ip = 0) {
   empty <- tibble::tibble(pitcher = integer(), name = character(), team = character(), basis = character(), ip = numeric(),
                           true_talent = numeric(), tt_lo = numeric(), tt_hi = numeric(), era = numeric(), era_lo = numeric(),
@@ -177,6 +175,7 @@ projections_table <- function(proj, pitchers, basis = "All", team = "All", min_i
     dplyr::arrange(dplyr::desc(true_talent))
 }
 
+# League Projections page
 projectionsUI <- function(id) {
   ns <- NS(id)
   tagList(
@@ -222,6 +221,7 @@ projectionsServer <- function(id, outputs, sel, parent = NULL) {
         DT::formatRound(c("K%", "BB+HBP%", "HR%", "Step fwd", "Step back"), 1) %>%
         DT::formatStyle("True Talent", backgroundColor = grade_fill(), color = grade_text_color())
     })
+    # Row click opens that pitcher's projection
     observeEvent(input$table_rows_selected, {
       r <- board()[input$table_rows_selected, ]
       lv <- if (identical(r$basis, "MLB-equivalent")) "AAA" else "MLB"

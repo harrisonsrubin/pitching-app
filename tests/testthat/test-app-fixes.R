@@ -1,6 +1,6 @@
 fixes_fx <- function() { local_app_fixture(.frame = parent.frame()); load_outputs(app_config()) }
 
-# ---- Pipeline: 90% intervals, anchors written from what was used ----
+# Pipeline: 90% intervals, anchors written from what was used
 test_that("grade rows carry 90% intervals", {
   fit <- list(by_type = tibble::tibble(pitcher = 1L, pitch_type = "4S", n = 100L, est = 0, se = 0.01),
               by_pitcher = tibble::tibble(pitcher = 1L, n = 100L, est = 0, se = 0.01))
@@ -20,7 +20,7 @@ test_that("the published anchors are the anchors the grades used", {
   expect_equal(back$mean, 0.123); expect_equal(back$unit, 0.456)
 })
 
-# ---- Grades never shown outside 20-80 ----
+# Grades never shown outside 20-80
 test_that("grades and ranges are capped at 20 and 80 for display", {
   source_app()
   expect_equal(clamp_grade(c(12, 20, 55, 80, 93, NA)), c(20, 20, 55, 80, 80, NA))
@@ -41,14 +41,14 @@ test_that("loaded grade columns are capped at 20-80", {
   expect_true(all(v >= 20 & v <= 80))
 })
 
-# ---- Hover text is dark ----
+# Hover text is dark
 test_that("hover labels use dark text", {
   o <- fixes_fx()
   p <- plotly::plotly_build(movement_plot(fixture_display()[1:30, ], o$movement_ref, o$pctl, "MLB", 2026L))
   expect_equal(p$x$layout$hoverlabel$font$color, INK)
 })
 
-# ---- Pitcher dropdown A-Z by last name ----
+# Pitcher dropdown A-Z by last name
 test_that("pitchers are ordered by last name, ignoring suffixes and keeping name particles", {
   p <- tibble::tibble(level = "MLB", season = 2026L, pitcher = 1:6, teams = "DET", team_abbrev = "DET",
                       pitches = c(900L, 800L, 700L, 600L, 500L, 400L),
@@ -60,7 +60,7 @@ test_that("pitchers are ordered by last name, ignoring suffixes and keeping name
   expect_equal(last_name_key(c("Lance McCullers Jr.", "Ken Griffey III", NA)), c("mccullers", "griffey", NA))
 })
 
-# ---- Min pitches default to 0 everywhere ----
+# Min pitches default to 0 everywhere
 test_that("every min-pitches slider starts at 0", {
   suppressPackageStartupMessages(library(shiny))
   source_app()
@@ -72,7 +72,7 @@ test_that("every min-pitches slider starts at 0", {
   }
 })
 
-# ---- Editor: its own lasso plot on the same page as the controls ----
+# Editor: its own lasso plot on the same page as the controls
 editor_args <- function(o) {
   d <- fixture_display()
   list(cfg = list(local = FALSE, app_repo = "o/pitching-app", corrections_token = "t",
@@ -109,13 +109,13 @@ test_that("the type list is not rebuilt when the selection changes", {
   shiny::testServer(editorServer, args = editor_args(o), {
     session$setInputs(`admin-pw` = "open sesame", `admin-login` = 1)
     h1 <- output$panel$html
-    session$setInputs(new_type = "SL", save = 1)       # status changes; the panel must not re-render
+    session$setInputs(new_type = "SL", save = 1)  # status changes; the panel must not re-render
     expect_identical(output$panel$html, h1)
     expect_match(output$status$html, "Select pitches first")
   })
 })
 
-# ---- Admin lockout holds across sessions ----
+# Admin lockout holds across sessions
 test_that("five wrong passwords lock every session for 15 minutes", {
   source_app(); admin_lock_reset()
   cfg <- list(admin_hash = bcrypt::hashpw("open sesame"))
@@ -124,7 +124,7 @@ test_that("five wrong passwords lock every session for 15 minutes", {
   shiny::testServer(adminServer, args = list(cfg = cfg), {
     for (i in 1:5) session$setInputs(pw = "nope", login = i)
   })
-  shiny::testServer(adminServer, args = list(cfg = cfg), {   # a fresh session (a reload)
+  shiny::testServer(adminServer, args = list(cfg = cfg), {  # a fresh session (a reload)
     session$setInputs(pw = "open sesame", login = 1)
     expect_false(is_admin())
     expect_match(output$status$html, "15 minutes")
@@ -137,13 +137,13 @@ test_that("five wrong passwords lock every session for 15 minutes", {
   admin_lock_reset()
 })
 
-# ---- Leaderboard reads the sidebar scale from the start ----
+# Leaderboard reads the sidebar scale from the start
 test_that("the leaderboard is never built on the wrong scale at startup", {
   o <- fixes_fx()
   seen <- character()
   real <- leaderboard_table
   local_global_binding(leaderboard_table = function(...) { a <- list(...); seen <<- c(seen, a[[7]]); real(...) })
-  ready <- shiny::reactiveVal(FALSE)   # the sidebar is not ready when the page first loads
+  ready <- shiny::reactiveVal(FALSE)  # the sidebar is not ready when the page first loads
   sel <- list(state = shiny::reactive({ shiny::req(ready()); list(level = "MLB", season = 2026L, team = "All",
                                                                   min_pitches = 0, scale = "type") }),
               select = function(...) NULL)
@@ -157,7 +157,7 @@ test_that("the leaderboard is never built on the wrong scale at startup", {
   expect_true(all(seen == "type"))
 })
 
-# ---- Stuff Map colors match the grade bins ----
+# Stuff Map colors match the grade bins
 test_that("stuff map colorscale steps at the grade bins with the grade colors", {
   source_app()
   cs <- grade_colorscale()
@@ -169,7 +169,7 @@ test_that("stuff map colorscale steps at the grade bins with the grade colors", 
   }
 })
 
-# ---- Rolling and Command name the pitcher; Command follows the sidebar ----
+# Rolling and Command name the pitcher; Command follows the sidebar
 test_that("rolling names the selected pitcher", {
   o <- fixes_fx()
   d <- fixture_display()

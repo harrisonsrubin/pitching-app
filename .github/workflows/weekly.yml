@@ -35,4 +35,4 @@ jobs:
       - name: Upload
         run: Rscript run.R sync_store upload raw/statsapi
       - name: Projections
-        run: Rscript run.R project $(Rscript -e 'source("R/load.R"); cat(last_season())')
+        run: Rscript run.R project $(Rscript -e 'source("R/load.R"); writeLines(as.character(last_season()))')

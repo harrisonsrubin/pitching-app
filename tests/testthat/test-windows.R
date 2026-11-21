@@ -24,7 +24,7 @@ test_that("a cutoff keeps only plate appearances at or before it", {
 })
 
 test_that("component park factors are half-regressed home-vs-road ratios", {
-  # Team A's home park allows twice the HR rate its hitters/pitchers see on the road.
+  # Team A's park allows twice the road HR rate
   sums <- dplyr::bind_rows(
     tibble::tibble(season = 2025L, venue_id = 1L, team = "A", side = "home", pa = 1000, hr = 40, bip = 700, hbip = 210, runs = 500, games = 81),
     tibble::tibble(season = 2025L, venue_id = NA_integer_, team = "A", side = "road", pa = 1000, hr = 20, bip = 700, hbip = 210, runs = 500, games = 81))
@@ -44,7 +44,7 @@ test_that("park sums split home and road by team, and pitcher parks weight by pl
   cpf <- tibble::tibble(venue_id = c(1L, 2L), season = 2025L, pf_runs = c(1.2, 1), pf_hr = c(1.4, 1), pf_hbip = c(1, 1))
   pp <- pitcher_parks(pa, scores, cpf)
   expect_equal(pp$ppf_hr, mean(c(1.4, 1)))
-  pp2 <- pitcher_parks(pa, scores, cpf[1, ])          # an unknown park counts as 1
+  pp2 <- pitcher_parks(pa, scores, cpf[1, ])  # an unknown park counts as 1
   expect_equal(pp2$ppf_runs, mean(c(1.2, 1)))
 })
 

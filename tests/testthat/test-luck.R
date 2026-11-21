@@ -29,7 +29,7 @@ test_that("a pitcher whose balls in play fell as expected has no BABIP luck; ext
   g <- luck_gap(f$line, f$expected, f$map, er_r = 0.92, strand = f$strand, fb = f$fb)
   expect_equal(g$babip[g$pitcher == 1], 0)
   expect_equal(g$hr_fb[g$pitcher == 1], 0)
-  expect_gt(g$hr_fb[g$pitcher == 2], 0) # more homers than his talent: unlucky, ERA up
+  expect_gt(g$hr_fb[g$pitcher == 2], 0)  # more homers than his talent: unlucky, ERA up
 })
 
 test_that("without fly-ball data HR/FB is NA and other absorbs it", {
@@ -50,7 +50,7 @@ test_that("expected results are put in the pitcher's parks, so a hitters' park i
   f <- luck_fx()
   parks <- tibble::tibble(pitcher = 1:3, ppf_runs = 1.2, ppf_hr = 1.25, ppf_hbip = 1.1)
   line <- f$line
-  line$hbip <- round(f$expected$hbip * 1.1 * line$bip)   # results exactly as his talent in these parks
+  line$hbip <- round(f$expected$hbip * 1.1 * line$bip)  # results exactly as his talent in these parks
   g0 <- luck_gap(line, f$expected, f$map, er_r = 0.92, strand = f$strand, fb = f$fb)
   g1 <- luck_gap(line, f$expected, f$map, er_r = 0.92, strand = f$strand, fb = f$fb, parks = parks)
   expect_lt(abs(g1$babip[1]), 0.01)

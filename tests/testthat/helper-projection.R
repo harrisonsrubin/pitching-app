@@ -1,11 +1,10 @@
-# Simulated pitcher-season lines for projection tests (MLB 2012-2024, a tiny-sample rookie
-# 9999 and a mostly-Triple-A pitcher 8888).
+# Fake pitcher seasons: MLB 2012-2024, a tiny-sample rookie (9999), a mostly-AAA arm (8888)
 sim_world <- function(n = 400, seed = 5) {
   set.seed(seed)
   out <- list()
   for (i in seq_len(n)) {
     start <- sample(2012:2022, 1); len <- sample(3:6, 1); seasons <- start:min(start + len - 1, 2024)
-    if (i == 1) seasons <- 2018:2024   # the full-time veteran
+    if (i == 1) seasons <- 2018:2024  # the full-time veteran
     u <- rnorm(4, 0, c(0.25, 0.2, 0.2, 0.08)); age0 <- sample(22:30, 1)
     tbf <- if (i == 1) c(rep(700, length(seasons))) else sample(c(250, 700), 1)
     for (j in seq_along(seasons)) {

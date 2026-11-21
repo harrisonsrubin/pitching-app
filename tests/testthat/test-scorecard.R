@@ -19,7 +19,7 @@ test_that("IP bands", {
 test_that("CV never fits on the held-out pitcher", {
   df <- tibble::tibble(pitcher = 1:10, x = 1:10, y = c(1:9, 100), w = 1)
   r <- cv_rmse(df, y ~ x, df$w, folds = rep(1:2, 5))
-  # pitcher 10 (y = 100) is in fold 2; fold 1's fit (y = x exactly) predicts 10 for him -> error 90
+  # pitcher 10 (y = 100) is in fold 2; fold 1's y = x fit predicts 10, error 90
   expect_gt(r$rmse, 10)
 })
 

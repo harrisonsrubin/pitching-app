@@ -1,11 +1,8 @@
-# Pitch-Type Editor: admin login, GitHub corrections file, and the editor page.
+# Pitch-Type Editor: admin login, GitHub corrections file and the editor page
 
-# ==== admin ===============================================================================
+# Admin login
 
-# Admin login (P2 design 6). The app holds only a bcrypt hash of the password
-# (PV_ADMIN_HASH). Five wrong tries in a row lock the login for every session for 15
-# minutes, so reloading the page does not reset the count. Nothing secret is rendered.
-
+# Five wrong tries lock the login for every session for 15 minutes
 MAX_ATTEMPTS <- 5L
 LOCK_MINUTES <- 15
 ADMIN_LOCK <- new.env()
@@ -14,23 +11,26 @@ admin_lock_reset()
 admin_now <- function() getOption("pv.now", Sys.time())
 admin_locked <- function() !is.null(ADMIN_LOCK$until) && admin_now() < ADMIN_LOCK$until
 
+# Compare a password to the stored bcrypt hash
 check_password <- function(pw, hash) {
   if (!nzchar(hash %||% "") || !nzchar(pw %||% "")) return(FALSE)
   isTRUE(tryCatch(bcrypt::checkpw(pw, hash), error = function(e) FALSE))
 }
 
+# Password box and unlock button
 adminUI <- function(id) {
   ns <- NS(id)
   tagList(passwordInput(ns("pw"), "Admin password"), actionButton(ns("login"), "Unlock"), uiOutput(ns("status")))
 }
 
+# Returns a reactive that is TRUE once unlocked
 adminServer <- function(id, cfg) {
   moduleServer(id, function(input, output, session) {
     ok <- reactiveVal(FALSE)
     msg <- reactiveVal("")
     observeEvent(input$login, {
       updateTextInput(session, "pw", value = "")
-      if (!is.null(ADMIN_LOCK$until) && !admin_locked()) admin_lock_reset()   # lock expired
+      if (!is.null(ADMIN_LOCK$until) && !admin_locked()) admin_lock_reset()  # lock expired
       if (admin_locked()) { msg(sprintf("Too many attempts. Try again in %d minutes.", LOCK_MINUTES)); return() }
       if (check_password(input$pw, cfg$admin_hash)) { admin_lock_reset(); msg(""); ok(TRUE); return() }
       ADMIN_LOCK$fails <- ADMIN_LOCK$fails + 1L
@@ -45,23 +45,22 @@ adminServer <- function(id, cfg) {
   })
 }
 
-# ==== github_corrections ==================================================================
+# GitHub corrections
 
-# Saving pitch-type corrections (P2 design 6, README 5.4): read the season's CSV from
-# the repo through the GitHub contents API, upsert by pitch_uid (latest wins), and write
-# it back with the sha it was read at. If it changed in between, re-read and retry once;
-# then report an error rather than overwrite. Only corrections files can be written.
-
+# Corrections CSVs are read and written through the GitHub contents API
 CORRECTION_COLS <- c("pitch_uid", "play_id", "new_pitch_type", "original_pitch_type", "corrected_at", "corrected_by")
 CORRECTIONS_PATH_RE <- "^corrections/pitch_corrections_\\d{4}\\.csv$"
 
+# Repo path of a season's corrections file
 corrections_path <- function(season) sprintf("corrections/pitch_corrections_%d.csv", as.integer(season))
 
+# Empty corrections table with all columns
 empty_corrections <- function() {
   stats::setNames(as.data.frame(replicate(length(CORRECTION_COLS), character(), simplify = FALSE)), CORRECTION_COLS) %>%
     tibble::as_tibble()
 }
 
+# Add new corrections, replacing any older row for the same pitch
 upsert_corrections <- function(existing, new, now = Sys.time()) {
   stamp <- format(as.POSIXct(now, tz = "UTC"), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
   add <- tibble::tibble(pitch_uid = new$pitch_uid, play_id = NA_character_, new_pitch_type = new$new_pitch_type,
@@ -72,6 +71,7 @@ upsert_corrections <- function(existing, new, now = Sys.time()) {
     dplyr::arrange(corrected_at, pitch_uid)
 }
 
+# Error messages for unknown pitch types or pitches
 validate_corrections <- function(new, display) {
   msgs <- character()
   bad <- setdiff(unique(new$new_pitch_type), c(PITCH_LABELS, "REMOVED"))
@@ -81,9 +81,10 @@ validate_corrections <- function(new, display) {
   msgs
 }
 
+# GitHub contents API URL for a repo path
 contents_url <- function(path, cfg) sprintf("%s/repos/%s/contents/%s", GITHUB_API, cfg$app_repo, path)
 
-# list(rows, sha); a missing file is an empty table with no sha.
+# Read a corrections file and its sha; a missing file is empty with no sha
 github_get_corrections <- function(path, cfg) {
   meta <- httr2::req_perform(gh_request(contents_url(path, cfg), cfg$corrections_token))
   if (httr2::resp_status(meta) == 404) return(list(rows = empty_corrections(), sha = NULL))
@@ -96,7 +97,7 @@ github_get_corrections <- function(path, cfg) {
   list(rows = dplyr::bind_rows(empty_corrections(), rows), sha = sha)
 }
 
-# Returns the HTTP status of the write.
+# Write a corrections file and return the HTTP status
 github_put_file <- function(path, csv_text, sha, message, cfg) {
   if (!grepl(CORRECTIONS_PATH_RE, path)) stop("Only corrections files can be written, not ", path)
   body <- list(message = message, content = jsonlite::base64_enc(charToRaw(csv_text)))
@@ -106,10 +107,12 @@ github_put_file <- function(path, csv_text, sha, message, cfg) {
   httr2::resp_status(resp)
 }
 
+# Table to CSV text
 corrections_csv <- function(rows) {
   paste0(paste(utils::capture.output(readr::write_csv(rows, stdout(), na = "")), collapse = "\n"), "\n")
 }
 
+# Upsert and write back, retrying once if the file changed mid-save
 save_corrections <- function(new, season, cfg) {
   path <- corrections_path(season)
   msg <- sprintf("Pitch-type corrections %d (%d pitches)", as.integer(season), nrow(new))
@@ -123,27 +126,28 @@ save_corrections <- function(new, season, cfg) {
   list(ok = FALSE, message = "The corrections file changed while saving. Nothing was overwritten; reload and try again.")
 }
 
+# Retag or drop the given pitches
 apply_selection <- function(display, uids, new_type) {
   if (identical(new_type, "REMOVED")) return(display[!display$pitch_uid %in% uids, ])
   display$pitch_type[display$pitch_uid %in% uids] <- new_type
   display
 }
 
+# Apply all session edits to the display data
 apply_selection_edits <- function(display, edits) {
   if (is.null(edits) || nrow(edits) == 0) return(display)
   for (ty in unique(edits$new_pitch_type)) display <- apply_selection(display, edits$pitch_uid[edits$new_pitch_type == ty], ty)
   display
 }
 
-# REMOVED pitches are gone from the display data, so they are found in the season's
-# corrections file: those in a plate appearance (game_pk-at_bat) this pitcher threw in.
+# Removed pitches from this pitcher's plate appearances, found in the corrections file
 removed_for_pitcher <- function(corr, display) {
   if (is.null(corr) || nrow(corr) == 0 || is.null(display) || nrow(display) == 0) return(corr[0, ])
   pa <- function(uid) sub("-\\d+$", "", uid)
   corr[corr$new_pitch_type == "REMOVED" & pa(corr$pitch_uid) %in% pa(display$pitch_uid), ]
 }
 
-# The season's corrections as the app reads them: the repo file (local mode) or GitHub.
+# Season's corrections from the local repo file or GitHub
 read_season_corrections <- function(season, cfg) {
   if (isTRUE(cfg$local)) {
     f <- file.path(cfg$data_dir, "..", corrections_path(season))
@@ -153,32 +157,27 @@ read_season_corrections <- function(season, cfg) {
   tryCatch(github_get_corrections(corrections_path(season), cfg)$rows, error = function(e) empty_corrections())
 }
 
-# ==== editor ==========================================================================
+# Editor page
 
-# Pitch-Type Editor (admin only): lasso or box-select pitches on this page's movement
-# plot, choose a label, save. Saving commits the season's corrections CSV to the repo;
-# the change shows immediately in this session and in the grades after the rescore.
-# The plot lives on this page (not the Movement tab) because switching tabs clears a
-# plotly selection.
-
+# Own movement plot here since switching tabs clears a plotly selection
 editorUI <- function(id) {
   ns <- NS(id)
   tagList(uiOutput(ns("panel")), DT::DTOutput(ns("corrections")))
 }
 
+# Select pitches on the plot, retag them and save to the corrections file
 editorServer <- function(id, cfg, sel, display, outputs) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
     is_admin <- adminServer("admin", cfg)
     status <- reactiveVal("")
-    saved <- reactiveVal(character())   # keys just saved: the redrawn plot has no selection
+    saved <- reactiveVal(character())  # keys just saved, so the stale selection is ignored
     selected <- reactive({
       ev <- tryCatch(plotly::event_data("plotly_selected", source = "editor"), error = function(e) NULL)
       k <- if (is.null(ev) || is.null(ev$key)) character() else as.character(stats::na.omit(unlist(ev$key)))
       if (length(k) && setequal(k, saved())) character() else k
     })
-    # Built once per unlock: the selection count and status are separate outputs, so the
-    # type list never re-renders (and never loses its choice) while pitches are selected.
+    # Built once per unlock so the type dropdown keeps its choice while selecting
     output$panel <- renderUI({
       if (!isTRUE(is_admin())) return(bslib::card(bslib::card_header("Pitch-Type Editor"), adminUI(ns("admin"))))
       tagList(
@@ -204,10 +203,11 @@ editorServer <- function(id, cfg, sel, display, outputs) {
       movement_plot(d, outputs$movement_ref, outputs$pctl, s$level, s$season, corrected_uids(d, display$edits()),
                     source = "editor", dragmode = "lasso")
     })
-    season_corr <- reactiveVal(NULL)   # the season's corrections file, read on unlock and after saves
+    season_corr <- reactiveVal(NULL)  # reread on unlock and after saves
     observeEvent(list(is_admin(), sel$state()$season), {
       if (isTRUE(is_admin())) season_corr(read_season_corrections(sel$state()$season, cfg))
     })
+    # Removed pitches from the file plus this session
     removed <- reactive({
       r <- removed_for_pitcher(season_corr(), display$rows())
       e <- display$edits()
@@ -219,6 +219,7 @@ editorServer <- function(id, cfg, sel, display, outputs) {
       }
       r
     })
+    # Every retagged or removed pitch for the table
     corrected <- reactive({
       d <- display$rows(); req(d)
       ch <- d[!is.na(d$pitch_type_savant) & d$pitch_type != d$pitch_type_savant,
@@ -228,6 +229,7 @@ editorServer <- function(id, cfg, sel, display, outputs) {
                        tibble::tibble(pitch_uid = rm_$pitch_uid, game_date = NA_character_,
                                       pitch_type_savant = rm_$original_pitch_type, pitch_type = "REMOVED"))
     })
+    # Validate, save, then apply locally
     commit <- function(new, d) {
       known <- dplyr::bind_rows(d[, "pitch_uid"], tibble::tibble(pitch_uid = removed()$pitch_uid))
       errs <- validate_corrections(new, known)

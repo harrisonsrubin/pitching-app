@@ -1,20 +1,13 @@
-# Scorecard: run accounting, park run factors, Marcel, and the P1 and P3 scorecard helpers.
+# Scorecard helpers: run accounting, park factors, Marcel benchmark, and metric tests
 
-# ==== runs ================================================================================
-
-# Run accounting for the scorecard (README 9): outs and runs per plate appearance
-# from Statcast, park run factors, park-adjusted RA9 from official Stats API runs,
-# and a Marcel-style RA9 benchmark.
+# Run accounting
 
 OUTS_BY_EVENT <- c(strikeout = 1L, field_out = 1L, force_out = 1L, sac_fly = 1L, sac_bunt = 1L,
                    fielders_choice_out = 1L, other_out = 1L, double_play = 2L,
                    grounded_into_double_play = 2L, strikeout_double_play = 2L,
                    sac_fly_double_play = 2L, sac_bunt_double_play = 2L, triple_play = 3L)
 
-# One row per plate appearance. Runs = runs scored while the PA was in progress
-# (runs on the pitcher's watch, not charged runs). Outs = change in outs before the
-# next PA of the half-inning; the last PA of a half-inning gets 3 - outs, except in
-# the game's final half-inning (walk-offs), where the event decides.
+# One row per PA with outs recorded and runs scored while the pitcher was on the mound
 pa_table <- function(pitches) {
   p <- pitches %>% dplyr::arrange(game_pk, at_bat_number, pitch_number)
   pa <- p %>%
@@ -29,6 +22,7 @@ pa_table <- function(pitches) {
                      .groups = "drop") %>%
     dplyr::arrange(game_pk, at_bat_number)
   half_order <- pa$inning * 2 + (pa$inning_topbot == "Bot")
+  # Outs from the next PA; last PA of a half gets 3 - outs, walk-offs use the event
   pa %>%
     dplyr::mutate(half = half_order) %>%
     dplyr::group_by(game_pk) %>%
@@ -44,6 +38,7 @@ pa_table <- function(pitches) {
     dplyr::select(game_pk, at_bat_number, pitcher, season, game_date, inning, inning_topbot, outs, runs, events, bb_type)
 }
 
+# Final score and venue for each game
 game_scores <- function(pitches) {
   pitches %>%
     dplyr::group_by(game_pk) %>%
@@ -53,8 +48,7 @@ game_scores <- function(pitches) {
                      away_runs = max(as.numeric(post_away_score), na.rm = TRUE), .groups = "drop")
 }
 
-# Runs per game at the venue ÷ runs per game in its home team's road games, pooled
-# over the season and the two before it, regressed halfway to 1.
+# Venue runs per game over the home team's road games, 3 seasons, regressed halfway
 park_run_factors <- function(scores) {
   scores$total <- scores$home_runs + scores$away_runs
   vs <- dplyr::distinct(scores, venue_id, season)
@@ -70,6 +64,7 @@ park_run_factors <- function(scores) {
   dplyr::bind_rows(out)
 }
 
+# Average park factor over each pitcher's PAs
 pitcher_park_factor <- function(pa, scores, pf) {
   pa %>%
     dplyr::left_join(dplyr::select(scores, game_pk, venue_id), by = "game_pk") %>%
@@ -78,6 +73,7 @@ pitcher_park_factor <- function(pa, scores, pf) {
     dplyr::summarise(ppf = mean(dplyr::coalesce(pf, 1)), .groups = "drop")
 }
 
+# Official MLB RA9 per pitcher-season, plus a park-adjusted version
 ra9_official <- function(stats, ppf) {
   stats %>%
     dplyr::filter(level == "MLB") %>%
@@ -90,8 +86,7 @@ ra9_official <- function(stats, ppf) {
     dplyr::select(pitcher, season, ip, ra9, ra9_adj, age)
 }
 
-# Marcel-style RA9 for `season`: prior three seasons weighted 3/2/1 by innings, plus
-# 100 IP of league RA9, times an age factor for the age in `season`.
+# Marcel RA9: 3 seasons weighted 3/2/1 by IP, plus 100 IP of league RA9, age-adjusted
 marcel_ra9 <- function(hist, season, lg_ra9) {
   proj <- season
   h <- hist[hist$season %in% (proj - 3):(proj - 1) & !is.na(hist$ra9), ]
@@ -106,13 +101,12 @@ marcel_ra9 <- function(hist, season, lg_ra9) {
     dplyr::select(pitcher, marcel)
 }
 
-# Run accounting reads raw Statcast, not the model-filtered pitches: a plate
-# appearance made only of automatic balls/strikes or untyped pitches still records
-# outs and runs (~480 such PAs per MLB season).
+# Raw Statcast columns so PAs with only auto balls/strikes or untyped pitches still count
 RUN_COLS <- c("game_pk", "pitcher", "season", "game_date", "inning", "inning_topbot", "at_bat_number",
               "pitch_number", "outs_when_up", "bat_score", "post_bat_score", "events", "home_team",
               "away_team", "post_home_score", "post_away_score", "balls", "strikes", "description", "bb_type")
 
+# Load one season of raw pitches with the venue attached
 load_run_pitches <- function(level, season) {
   p <- arrow::open_dataset(store_path(statcast_season_key(level, season))) %>%
     dplyr::select(dplyr::all_of(RUN_COLS)) %>% dplyr::collect()
@@ -120,14 +114,9 @@ load_run_pitches <- function(level, season) {
   dplyr::left_join(p, dplyr::select(sched, game_pk, venue_id), by = "game_pk")
 }
 
-# ==== scorecard ===========================================================================
+# Scorecard stats
 
-# Scorecard (README 9): is a metric a skill (stickiness), does it predict runs
-# (rest-of-season and next-season park-adjusted RA9), and does it add anything to what
-# we already knew (incremental value)? Rules: same pitchers and thresholds in both
-# seasons, weight = the smaller of the two seasons' innings, bands by innings,
-# Pearson and Spearman, pitchers who disappear counted separately.
-
+# Weighted Pearson correlation
 wcor <- function(x, y, w) {
   ok <- !is.na(x) & !is.na(y) & !is.na(w)
   x <- x[ok]; y <- y[ok]; w <- w[ok] / sum(w[ok])
@@ -135,16 +124,18 @@ wcor <- function(x, y, w) {
   sum(w * (x - mx) * (y - my)) / sqrt(sum(w * (x - mx)^2) * sum(w * (y - my)^2))
 }
 
+# Weighted Spearman correlation
 wspearman <- function(x, y, w) {
   ok <- !is.na(x) & !is.na(y) & !is.na(w)
   wcor(rank(x[ok]), rank(y[ok]), w[ok])
 }
 
+# Innings band label
 ip_band <- function(ip) {
   dplyr::case_when(ip >= 150 ~ "150+", ip >= 100 ~ "100-150", ip >= 50 ~ "50-100", TRUE ~ NA_character_)
 }
 
-# m: pitcher, season, value. ip: pitcher, season, ip.
+# Pair each pitcher's metric with his next season, weighted by the smaller IP
 pair_seasons <- function(m, ip, min_ip = 50) {
   a <- dplyr::inner_join(m, ip, by = c("pitcher", "season"))
   nxt <- dplyr::mutate(a, season = season - 1L)
@@ -153,8 +144,7 @@ pair_seasons <- function(m, ip, min_ip = 50) {
     dplyr::transmute(pitcher, season, x = value_y, y = value_y1, w = pmin(ip_y, ip_y1), band = ip_band(w))
 }
 
-# Qualified in season y but under the threshold (or absent) in y + 1, for seasons
-# where y + 1 exists in the data.
+# Count pitchers who qualified one season but not the next
 disappeared_count <- function(m, ip, min_ip = 50) {
   a <- dplyr::inner_join(m, ip, by = c("pitcher", "season"))
   q <- a[a$ip >= min_ip & a$season < max(ip$season), ]
@@ -162,9 +152,9 @@ disappeared_count <- function(m, ip, min_ip = 50) {
   tibble::tibble(n = sum(!paste(q$pitcher, q$season) %in% paste(nxt$pitcher, nxt$season)))
 }
 
-# Weighted linear fit on the other folds, predicted on the held-out fold.
+# Cross-validated weighted linear fit: RMSE and correlations on held-out folds
 cv_rmse <- function(df, formula, w, folds = fold_of(df$pitcher)) {
-  force(folds)   # evaluate on the unfiltered rows, before df is subset below
+  force(folds)  # evaluate before df is filtered
   df$.w <- w
   vars <- all.vars(formula)
   ok <- stats::complete.cases(df[vars]) & !is.na(df$.w)
@@ -180,14 +170,14 @@ cv_rmse <- function(df, formula, w, folds = fold_of(df$pitcher)) {
        pearson = wcor(pred, y, df$.w), spearman = wspearman(pred, y, df$.w), n = nrow(df))
 }
 
-# ---- rest-of-season windows ---------------------------------------------------------
+# Rest-of-season windows
 
+# Sortable key for PA order within a season
 order_key <- function(game_date, game_pk, at_bat_number) {
   as.numeric(game_date) * 1e9 + (as.numeric(game_pk) %% 1e6) * 1e3 + as.numeric(at_bat_number)
 }
 
-# Per pitcher-season: the PA key of his N-th pitch (raw Statcast count). Pitchers with
-# fewer than N pitches get no cutoff.
+# PA key of each pitcher's N-th pitch; pitchers short of N get no cutoff
 window_cutoffs <- function(run_pitches, n_pitches) {
   run_pitches %>%
     dplyr::mutate(key = order_key(game_date, game_pk, at_bat_number)) %>%
@@ -200,7 +190,7 @@ window_cutoffs <- function(run_pitches, n_pitches) {
 FIP_EVENTS <- list(hr = "home_run", bb = "walk", hbp = "hit_by_pitch",
                    k = c("strikeout", "strikeout_double_play"))
 
-# Runs/outs/FIP pieces from a PA table subset, per pitcher.
+# Runs, outs and FIP pieces per pitcher from a set of PAs
 pa_summary <- function(pa) {
   pa %>% dplyr::group_by(pitcher) %>%
     dplyr::summarise(outs = sum(outs), runs = sum(runs), n_pa = dplyr::n(),
@@ -212,28 +202,28 @@ pa_summary <- function(pa) {
                   k_minus_bb = (k - bb) / n_pa)
 }
 
+# League FIP constant that puts FIP on the RA9 scale
 fip_constant <- function(pa_season) {
   s <- pa_summary(dplyr::mutate(pa_season, pitcher = 0L))
   s$ra9 - s$fip_raw
 }
 
-# ==== scorecard_p3 ========================================================================
+# Projection checks
 
-# P3 scorecard helpers (README 9): range coverage, CRPS from simulation draws, and
-# calibration of the Step forward / Step back odds.
-
+# Share of actuals that land inside the range
 coverage <- function(lo, hi, actual) {
   ok <- !is.na(lo) & !is.na(hi) & !is.na(actual)
   if (!any(ok)) return(NA_real_)
   mean(actual[ok] >= lo[ok] & actual[ok] <= hi[ok])
 }
 
-# Sample CRPS: E|X - y| - E|X - X'| / 2 over the draws X.
+# Sample CRPS: E|X - y| - E|X - X'| / 2
 crps_draws <- function(draws, actual) {
   draws <- draws[!is.na(draws)]
   mean(abs(draws - actual)) - 0.5 * mean(abs(outer(draws, draws, "-")))
 }
 
+# Predicted vs observed Step odds by probability bin
 step_calibration <- function(pred, realized, breaks = c(0, 0.05, 0.1, 0.2, 0.3, 1)) {
   bin <- cut(pred, breaks, include.lowest = TRUE)
   tibble::tibble(bin = bin, pred = pred, real = as.numeric(realized)) %>%

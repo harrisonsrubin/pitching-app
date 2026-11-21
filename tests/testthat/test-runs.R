@@ -4,7 +4,7 @@ test_that("outs and runs per PA in a half-inning", {
          outs_when_up = c(0L, 0L, 0L, 1L), bat_score = c(0L, 0L, 2L, 2L), post_bat_score = c(0L, 2L, 2L, 2L),
          events = c("single", "home_run", "strikeout", "grounded_into_double_play"))
   pa <- pa_table(p)
-  expect_equal(pa$outs, c(0L, 0L, 1L, 2L))   # last PA of a non-final half-inning: 3 - outs_when_up
+  expect_equal(pa$outs, c(0L, 0L, 1L, 2L))  # last PA of a non-final half-inning: 3 - outs_when_up
   expect_equal(pa$runs, c(0L, 2L, 0L, 0L))
 })
 
@@ -25,14 +25,14 @@ test_that("park factor is regressed halfway", {
 })
 
 test_that("Marcel weights 3/2/1 plus 100 IP of league", {
-  h <- tibble::tibble(pitcher = 1L, season = 2027:2029, ip = c(100, 100, 100), ra9 = c(3, 4, 5), age = 26:28)   # 29 in 2030: no age factor
+  h <- tibble::tibble(pitcher = 1L, season = 2027:2029, ip = c(100, 100, 100), ra9 = c(3, 4, 5), age = 26:28)  # 29 in 2030: no age factor
   m <- marcel_ra9(h, 2030, lg_ra9 = 4.5)
   expect_equal(m$marcel, (3*100*5 + 2*100*4 + 1*100*3 + 100*4.5) / (600 + 100))
 })
 
 test_that("Marcel ages: younger improves, older declines", {
   h <- tibble::tibble(pitcher = 1:2, season = 2029L, ip = 100, ra9 = 4.5, age = c(24, 34))
-  m <- marcel_ra9(h, 2030, lg_ra9 = 4.5)   # ages in 2030: 25 and 35
+  m <- marcel_ra9(h, 2030, lg_ra9 = 4.5)  # ages in 2030: 25 and 35
   expect_equal(m$marcel, 4.5 * c(1 - 0.006 * 4, 1 + 0.003 * 6))
 })
 

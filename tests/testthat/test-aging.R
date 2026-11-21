@@ -11,7 +11,7 @@ sim_careers <- function(n = 3000, slope = 0.02, quit_slope = NULL, seed = 3) {
     ages <- ages[keep]; seasons <- seasons[keep]
     p <- plogis(base - my_slope * pmax(ages - 27, 0))
     tbf <- rep(600, length(ages))
-    if (!is.null(quit_slope) && my_slope == quit_slope) {   # steep decliners stop being seen after 31
+    if (!is.null(quit_slope) && my_slope == quit_slope) {  # steep decliners stop being seen after 31
       stay <- ages <= 31; ages <- ages[stay]; seasons <- seasons[stay]; p <- p[stay]; tbf <- tbf[stay]
     }
     if (!length(ages)) next

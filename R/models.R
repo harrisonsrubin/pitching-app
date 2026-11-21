@@ -1,21 +1,19 @@
-# LightGBM pitch models: training and scoring.
+# LightGBM pitch models: training and scoring
 
-# ==== models ==============================================================================
+# Models
 
-# LightGBM pitch models (README 7.1–7.5). Every pitch is scored by a model that never
-# saw its pitcher: pitchers are split into 5 folds by ID, each fold's model is trained
-# on the other four. Training uses MLB 2023–2026 with recency weights; everything else
-# (MLB 2020–2022, all Triple-A) is scored only.
-
+# Pitchers split into folds by ID so no pitch is scored by a model that saw its pitcher
 fold_of <- function(pitcher) as.integer(pitcher %% cfg()$n_folds + 1L)
 
-# Early-stopping validation pitchers, chosen independently of the fold split.
+# Early-stopping validation pitchers, independent of the fold split
 is_es_valid <- function(pitcher) (pitcher %/% 5) %% 10 == 0
 
+# Older seasons count less in training
 recency_weight <- function(season, latest) cfg()$recency_decay^(latest - season)
 
 ground_ball <- function(d) as.integer(d$bb_type == "ground_ball")
 
+# Each model's feature set, label, objective, and training rows
 MODEL_SPECS <- list(
   stuff         = list(features = "stuff",    label = "target",        objective = "regression",
                        rows = function(d) rep(TRUE, nrow(d))),
@@ -35,6 +33,7 @@ MODEL_SPECS <- list(
   p_gb          = list(features = "pitching", label = "ground_ball",   objective = "binary",
                        rows = function(d) d$in_play == 1 & !is.na(d$bb_type))
 )
+# Same models with features removed, to measure what they add
 ABLATION_SPECS <- list(
   stuff_physics  = utils::modifyList(MODEL_SPECS$stuff, list(features = "stuff_physics")),
   pitching_noseq = utils::modifyList(MODEL_SPECS$pitching, list(features = "pitching_noseq"))
@@ -45,8 +44,7 @@ model_label <- function(d, spec) {
   if (identical(spec$label, "ground_ball")) ground_ball(d) else d[[spec$label]]
 }
 
-# Position players pitching: primary-fastball velocity under 82 mph, or no fastball and
-# fewer than 100 pitches. They are scored but never trained on.
+# Excludes position players pitching: FB under 82 mph, or no FB and under 100 pitches
 training_eligible <- function(d) {
   key <- paste(d$pitcher, d$season, d$level)
   fb <- d$pitch_type %in% FB_TYPES
@@ -56,6 +54,7 @@ training_eligible <- function(d) {
   ifelse(is.na(v), as.vector(n[key]) >= 100, v >= 82)
 }
 
+# Train one booster with early stopping on the validation pitchers
 train_lgb <- function(X, y, w, objective, valid) {
   c0 <- cfg()
   cat_feat <- intersect("pitch_group_code", colnames(X))
@@ -73,13 +72,14 @@ train_lgb <- function(X, y, w, objective, valid) {
 
 predict_booster <- function(b, X) stats::predict(b, X)
 
+# Numeric matrix of the chosen feature columns
 feature_matrix <- function(d, feats) {
   X <- as.matrix(as.data.frame(lapply(d[feats], as.numeric)))
   colnames(X) <- feats
   X
 }
 
-# Each row predicted by the booster for its pitcher's fold.
+# Predict each row with the booster for its pitcher's fold
 predict_by_fold <- function(d, boosters, feats) {
   X <- feature_matrix(d, feats)
   f <- fold_of(d$pitcher)
@@ -91,7 +91,7 @@ predict_by_fold <- function(d, boosters, feats) {
   out
 }
 
-# Prediction averaged over the league count × platoon mix (README 7.1).
+# Average prediction over the league count and platoon mix
 neutral_count_predict <- function(d, predict_fn, mix) {
   X <- if (is.matrix(d)) d else as.matrix(d)
   out <- numeric(nrow(X))
@@ -102,10 +102,11 @@ neutral_count_predict <- function(d, predict_fn, mix) {
   out
 }
 
-# ---- training ---------------------------------------------------------------------
+# Training
 
 booster_path <- function(name, file) file.path(cfg()$data_dir, "models", "lgb", name, file)
 
+# Read only the columns a model needs for the given seasons
 load_model_data <- function(spec, level, seasons) {
   feats <- FEATURE_SETS[[spec$features]]
   cols <- unique(c(feats, "pitcher", "season", "level", "pitch_type", "velo", "balls", "strikes",
@@ -117,11 +118,13 @@ load_model_data <- function(spec, level, seasons) {
   }))
 }
 
+# Rows with a label that the model is allowed to train on
 training_rows <- function(d, spec) {
   y <- model_label(d, spec)
   spec$rows(d) & !is.na(y) & training_eligible(d)
 }
 
+# Train and save one booster per fold
 train_oof <- function(name) {
   spec <- all_specs()[[name]]
   feats <- FEATURE_SETS[[spec$features]]
@@ -146,7 +149,7 @@ load_boosters <- function(name) {
   lapply(seq_len(cfg()$n_folds), function(k) lightgbm::lgb.load(booster_path(name, sprintf("fold%d.txt", k))))
 }
 
-# Forward validation: train MLB 2023–2025, test MLB 2026 (README 7.5).
+# Train on earlier seasons, test on the latest, and compare against a baseline
 forward_eval <- function(name, refs) {
   spec <- all_specs()[[name]]
   feats <- FEATURE_SETS[[spec$features]]
@@ -188,10 +191,11 @@ forward_eval <- function(name, refs) {
   list(eval = ev, calibration = cal)
 }
 
-# ---- scoring ------------------------------------------------------------------------
+# Scoring
 
 xrv_key <- function(level, season) sprintf("processed/xrv/%s/%s.parquet", level, season)
 
+# Score every pitch with every model; Stuff is count-neutral, others vs the count baseline
 score_pitches <- function(d, refs) {
   mix <- refs$count_mix
   b <- refs$count_baseline

@@ -6,7 +6,7 @@ corr_csv <- function(rows) {
           rows), collapse = "\n")
 }
 
-# Mock GitHub contents API. `puts` statuses are returned in order for successive PUTs.
+# Mock GitHub contents API; successive PUTs return the `puts` statuses in order
 gh_mock <- function(existing = NULL, puts = 201L) {
   st <- new.env(); st$puts <- list(); st$gets <- 0L; st$put_status <- puts
   httr2::local_mocked_responses(function(req) {
@@ -89,9 +89,9 @@ test_that("save retries once on 409 then succeeds", {
   r <- save_corrections(new_rows(), 2026L, ed_cfg())
   expect_true(r$ok)
   expect_length(st$puts, 2)
-  expect_false(identical(st$puts[[1]]$sha, st$puts[[2]]$sha))   # re-read before retrying
+  expect_false(identical(st$puts[[1]]$sha, st$puts[[2]]$sha))  # re-read before retrying
   csv <- rawToChar(jsonlite::base64_dec(st$puts[[2]]$content))
-  expect_match(csv, "5-5-5")   # the other change is kept
+  expect_match(csv, "5-5-5")  # the other change is kept
 })
 
 test_that("save gives up after a second 409 without a third PUT", {

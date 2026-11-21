@@ -1,35 +1,34 @@
-# Cleaning pitches for modeling: loading with pitch-type corrections, physics, air density, park
-# tracking offsets, a consistent strike zone, and pitch-type labels.
+# Pitch cleaning: corrections, zone, physics, air density, park offsets, labels
 
-# ==== pitch_types =========================================================================
+# Pitch types
 
-# Savant pitch-type codes -> app labels and broad groups (FB / BR / OS).
-# The table lives in reference/pitch_type_map.csv; codes not listed there (EP, PO, IN, UN, ...)
-# map to NA and are excluded downstream.
+# Savant codes to app labels and groups; unlisted codes map to NA and get dropped
 
 pitch_type_table <- function() {
   readr::read_csv(file.path(repo_root(), "reference", "pitch_type_map.csv"),
                   col_types = "ccc", progress = FALSE)
 }
 
+# Savant code to app label
 map_pitch_type <- function(code) {
   tbl <- pitch_type_table()
   tbl$label[match(code, tbl$savant_code)]
 }
 
+# App label to group (FB / BR / OS)
 pitch_group <- function(label) {
   tbl <- dplyr::distinct(pitch_type_table(), label, group)
   tbl$group[match(label, tbl$label)]
 }
 
-# ==== corrections =========================================================================
+# Corrections
 
-# Pitch-type corrections: migration from the old app's play_id-keyed files to
-# pitch_uid ("<game_pk>-<at_bat_number>-<pitch_number>", Savant numbering).
+# Migrate old play_id-keyed corrections to pitch_uid (game_pk-at_bat-pitch)
 
 CORRECTION_COLS <- c("pitch_uid", "play_id", "new_pitch_type", "original_pitch_type",
                      "corrected_at", "corrected_by")
 
+# Read an old corrections file as character columns
 read_old_corrections <- function(path) {
   d <- readr::read_csv(path, col_types = readr::cols(.default = readr::col_character()),
                        progress = FALSE, show_col_types = FALSE)
@@ -37,7 +36,7 @@ read_old_corrections <- function(path) {
   d
 }
 
-# One row per pitch: the latest correction wins.
+# One row per pitch: the latest correction wins
 dedupe_corrections <- function(df, key = "play_id") {
   df %>%
     dplyr::arrange(dplyr::desc(corrected_at)) %>%
@@ -45,9 +44,7 @@ dedupe_corrections <- function(df, key = "play_id") {
     dplyr::arrange(corrected_at)
 }
 
-# play_id -> pitch_uid from an old processed CSV, reading only four columns through
-# duckdb so the 2 GB file never lands in R. The old data's atBatIndex is 0-based;
-# Savant's at_bat_number is 1-based. pitchNumber is already 1-based within the PA.
+# Map play_id to pitch_uid from an old processed CSV via duckdb (atBatIndex is 0-based)
 play_id_index <- function(processed_csv) {
   con <- DBI::dbConnect(duckdb::duckdb())
   on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
@@ -62,6 +59,7 @@ play_id_index <- function(processed_csv) {
   tibble::as_tibble(DBI::dbGetQuery(con, sql))
 }
 
+# Map old corrections to pitch_uid, keeping unmapped rows for review
 migrate_corrections <- function(old, index) {
   old <- dedupe_corrections(old, key = "play_id")
   joined <- dplyr::left_join(old, index, by = "play_id")
@@ -74,6 +72,7 @@ migrate_corrections <- function(old, index) {
   list(mapped = mapped, unmapped = unmapped)
 }
 
+# Check that original labels in mapped corrections agree with Savant
 verify_against_statcast <- function(mapped, statcast) {
   j <- dplyr::inner_join(dplyr::filter(mapped, !is.na(original_pitch_type)),
                          dplyr::select(statcast, pitch_uid, pitch_type), by = "pitch_uid") %>%
@@ -84,29 +83,21 @@ verify_against_statcast <- function(mapped, statcast) {
        mismatches = j[!same, ])
 }
 
-# ==== zone ================================================================================
+# Zone
 
-# Plate location and strike zone made consistent across eras.
-# Statcast changed both definitions with the automated ball-strike (ABS) system,
-# verified from the data (release height implied by each pitch's trajectory):
-#   MLB 2020–2025:           plate_x/plate_z at the FRONT of the plate (y = 17 in);
-#                            sz_top/sz_bot = posture zone, varies pitch to pitch.
-#   MLB 2026, AAA 2023–2026: plate_x/plate_z at the MIDDLE of the plate (y = 8.5 in);
-#                            sz_top/sz_bot = ABS zone, fixed per batter from height.
-# Everything is converted to the front plane and to a per-batter zone on the
-# 2023–2025 posture scale, so the models see one definition.
+# Put plate location and strike zone on one definition across pre-ABS and ABS eras
 
-ABS_ERA <- list(MLB = 2026L, AAA = 2023L)   # first ABS-era season; every later one is too
+ABS_ERA <- list(MLB = 2026L, AAA = 2023L)  # first ABS-era season per level
 
 is_abs_era <- function(level, season) season >= ABS_ERA[[level]]
 
+# Time for a pitch to reach plane y, from the 9-parameter fit
 plane_time <- function(vy0, ay, y) {
   a <- ay / 2; c <- 50 - y
   (-vy0 - sqrt(vy0^2 - 4 * a * c)) / (2 * a)
 }
 
-# Shift locations reported at the middle of the plate to the front, along each
-# pitch's own trajectory.
+# Shift middle-of-plate locations to the front along each pitch's trajectory
 to_front_plane <- function(d) {
   tf <- plane_time(d$vy0, d$ay, 17 / 12)
   tm <- plane_time(d$vy0, d$ay, 17 / 24)
@@ -115,14 +106,14 @@ to_front_plane <- function(d) {
   d
 }
 
+# Median zone top and bottom per batter
 batter_medians <- function(d) {
   d %>% dplyr::group_by(batter) %>%
     dplyr::summarise(top = stats::median(sz_top, na.rm = TRUE), bot = stats::median(sz_bot, na.rm = TRUE),
                      .groups = "drop")
 }
 
-# Linear map from the ABS zone to the posture zone, fit on batters seen in both a
-# posture-era season and an ABS-era season.
+# Linear map from ABS zone to posture zone, fit on batters seen in both eras
 fit_zone_map <- function(posture, abs) {
   j <- dplyr::inner_join(batter_medians(posture), batter_medians(abs), by = "batter", suffix = c("_pos", "_abs"))
   ft <- stats::lm(top_pos ~ top_abs, data = j); fb <- stats::lm(bot_pos ~ bot_abs, data = j)
@@ -133,6 +124,7 @@ fit_zone_map <- function(posture, abs) {
                  n_batters = nrow(j))
 }
 
+# Give each batter one zone, mapped to the posture scale in the ABS era
 harmonize_zone <- function(d, zone_map, abs_era) {
   m <- batter_medians(d)
   i <- match(d$batter, m$batter)
@@ -146,26 +138,23 @@ harmonize_zone <- function(d, zone_map, abs_era) {
   d
 }
 
-# ==== physics =============================================================================
+# Physics
 
-# Pitch physics (README 6, 7.1, 7.2). Coordinates are Statcast's: x toward the
-# catcher's right, y from home plate toward the mound, z up; feet and seconds.
-# Accelerations (ax, ay, az) are the constant accelerations of the 9-parameter fit.
+# Statcast coordinates: x to catcher's right, y toward mound, z up; feet and seconds
 
 GRAVITY_FT <- -32.174
 BALL_MASS_KG <- 0.1455
 BALL_RADIUS_M <- 0.0366
 FT_TO_M <- 0.3048
 
-# Left-handers mirrored onto the right-handed side so one model serves both hands.
+# Mirror lefties onto the right-handed side so one model serves both hands
 mirror_x <- function(x, p_throws) x * ifelse(p_throws == "L", -1, 1)
 mirror_axis <- function(axis, p_throws) ifelse(p_throws == "L", (360 - axis) %% 360, axis)
 
-# Movement rescaled to standard air: Magnus force is proportional to air density.
-# Release speed is measured at release, so it needs no drag correction.
+# Rescale movement to standard air (Magnus force scales with density)
 neutral_movement <- function(pfx, rho) pfx * RHO_REF / rho
 
-# Vertical and horizontal approach angles (degrees) at the front of home plate.
+# Vertical and horizontal approach angles (degrees) at the front of the plate
 approach_angles <- function(vx0, vy0, vz0, ax, ay, az) {
   y_plate <- 17 / 12
   vy_f <- -sqrt(vy0^2 - 2 * ay * (50 - y_plate))
@@ -176,12 +165,9 @@ approach_angles <- function(vx0, vy0, vz0, ax, ay, az) {
                  haa = -atan(vx_f / vy_f) * 180 / pi)
 }
 
-# Share of the measured spin that is transverse (useful for movement), estimated by
-# inverting the lift coefficient: Magnus acceleration is the part of (a - g) that is
-# perpendicular to the velocity; C_L = S / (0.4 + 2.32 S) is inverted for the spin
-# factor S = r * omega / v.
+# Share of spin that is transverse, from inverting the lift coefficient
 spin_efficiency <- function(vx0, vy0, vz0, ax, ay, az, spin_rate, rho) {
-  # velocity at mid-flight, representative of the whole trip to the plate
+  # Mid-flight velocity stands in for the whole trip
   vm <- mid_flight_velocity(vx0, vy0, vz0, ax, ay, az)
   bx <- ax; by <- ay; bz <- az - GRAVITY_FT
   v <- sqrt(vm$vx^2 + vm$vy^2 + vm$vz^2)
@@ -198,34 +184,30 @@ spin_efficiency <- function(vx0, vy0, vz0, ax, ay, az, spin_rate, rho) {
   pmin(1, rpm_t / spin_rate)
 }
 
-# Velocity halfway (in time) between y = 50 ft and the front of the plate.
+# Velocity halfway (in time) between y = 50 ft and the front of the plate
 mid_flight_velocity <- function(vx0, vy0, vz0, ax, ay, az) {
   vy_f <- -sqrt(vy0^2 - 2 * ay * (50 - 17 / 12))
   tm <- (vy_f - vy0) / ay / 2
   list(vx = vx0 + ax * tm, vy = vy0 + ay * tm, vz = vz0 + az * tm)
 }
 
-# Spin axis implied by the movement direction, in Savant's convention
-# (180 = pure backspin, movement straight up).
+# Spin axis implied by movement direction (Savant convention, 180 = pure backspin)
 movement_axis <- function(pfx_x, pfx_z) (180 + atan2(-pfx_x, pfx_z) * 180 / pi) %% 360
 
-# Signed angular difference a - b in (-180, 180].
+# Signed angular difference a - b in (-180, 180]
 circ_diff <- function(a, b) {
   d <- (a - b) %% 360
   ifelse(d > 180, d - 360, d)
 }
 
-# ==== air =================================================================================
+# Air
 
-# Air density per game (README 6.1). The Magnus force that makes a pitch move scales
-# with air density, so movement measured in thin air (Coors, hot days) is rescaled to
-# a standard day: sea level, 70°F, 50% relative humidity.
+# Air density per game; movement is rescaled to sea level, 70°F, 50% humidity
 
-STD_TEMP_C <- 21.111   # 70°F
+STD_TEMP_C <- 21.111  # 70°F
 STD_RH_PCT <- 50
 
-# Density of moist air (kg/m^3) from temperature (°C), relative humidity (%) and
-# station pressure (hPa). Saturation vapor pressure from the Tetens formula.
+# Moist air density (kg/m^3) from temp (°C), humidity (%) and pressure (hPa)
 air_density <- function(temp_c, rh_pct, pressure_hpa) {
   es <- 6.1078 * 10^(7.5 * temp_c / (temp_c + 237.3))
   pv <- rh_pct / 100 * es
@@ -233,19 +215,17 @@ air_density <- function(temp_c, rh_pct, pressure_hpa) {
   100 * (pressure_hpa - pv) / (287.058 * tk) + 100 * pv / (461.495 * tk)
 }
 
-# Standard-atmosphere station pressure (hPa) at an elevation in feet.
+# Standard-atmosphere pressure (hPa) at an elevation in feet
 pressure_from_elevation <- function(elev_ft) {
   1013.25 * (1 - 2.25577e-5 * elev_ft * 0.3048)^5.25588
 }
 
+# Reference density for a standard day
 RHO_REF <- air_density(STD_TEMP_C, STD_RH_PCT, 1013.25)
 
 INDOOR_CONDITIONS <- c("Dome", "Roof Closed")
 
-# One row per game: density, whether it was played indoors, and where the inputs came
-# from. Indoor games use 70°F / 50% with the outdoor pressure (elevation still
-# matters indoors). Missing weather falls back to a standard day at the park's
-# elevation, so density is never NA.
+# One row per game; indoor or missing weather uses a standard day at park elevation
 game_air <- function(schedule, weather, parks) {
   d <- schedule %>%
     dplyr::select(game_pk, venue_id, weather_condition) %>%
@@ -268,32 +248,27 @@ game_air <- function(schedule, weather, parks) {
   )
 }
 
-# ==== park_offsets ========================================================================
+# Park offsets
 
-# Per-park tracking offsets (README 6.2). Hawk-Eye installations are not calibrated
-# identically, so the same pitch can read differently from park to park. Pitchers who
-# throw in several parks reveal each park's offset: we fit, per metric, a pitcher ×
-# pitch-type mean plus a venue offset by alternating least squares, so a venue whose
-# home pitchers simply throw harder does not get a "fast gun" offset.
-# Fit on one level-season at a time.
+# Per-park tracking offsets, fit per metric from pitchers who throw in several parks
 
 PARK_METRICS <- c("velo", "spin_rate", "rel_x", "rel_z", "ext", "hb", "ivb")
-# Horizontal metrics are stored mirrored (lefties flipped), but a camera's bias is in
-# the raw catcher-view frame. They are unmirrored to fit the offset and the offset is
-# re-signed when applied, so lefties and righties at a park get the same correction.
+# Horizontal metrics are unmirrored to fit, so both hands get the same park correction
 HORIZONTAL_METRICS <- c("rel_x", "hb")
 
+# -1 for lefties on horizontal metrics, otherwise 1
 hand_sign <- function(d, m) {
   if (m %in% HORIZONTAL_METRICS && "p_throws" %in% names(d)) ifelse(d$p_throws == "L", -1, 1) else 1
 }
 
+# Alternating least squares: pitcher x pitch-type means plus shrunk venue offsets
 fit_park_offsets <- function(d, metrics = PARK_METRICS, k = 2000, iters = 5) {
   grp_all <- paste(d$pitcher, d$pitch_type)
   out <- lapply(metrics, function(m) {
     raw <- d[[m]] * hand_sign(d, m)
     ok <- !is.na(raw) & !is.na(d$venue_id)
     x <- raw[ok]; v <- d$venue_id[ok]; g <- grp_all[ok]
-    # only pitcher × pitch-type groups seen in at least two venues carry information
+    # Only groups seen in at least two venues carry information
     n_venues <- tapply(v, g, function(z) length(unique(z)))
     keep <- n_venues[g] >= 2
     x <- x[keep]; v <- v[keep]; g <- g[keep]
@@ -311,6 +286,7 @@ fit_park_offsets <- function(d, metrics = PARK_METRICS, k = 2000, iters = 5) {
   dplyr::bind_rows(out)
 }
 
+# Subtract each venue's offset from the metric
 apply_park_offsets <- function(d, offsets) {
   for (m in unique(offsets$metric)) {
     o <- offsets[offsets$metric == m, ]
@@ -320,11 +296,9 @@ apply_park_offsets <- function(d, offsets) {
   d
 }
 
-# ==== pitches =============================================================================
+# Pitches
 
-# Load one level-season of pitches for modeling: only the columns P1 needs, with
-# pitch-type corrections applied before anything else (README 5.4), non-competitive
-# pitches removed, outcome flags added, and each game's venue and air density joined.
+# Load one level-season for modeling: corrections, outcome flags, venue and air density
 
 PITCH_COLS <- c(
   "pitch_uid", "game_pk", "game_date", "season", "level", "home_team", "away_team",
@@ -344,10 +318,10 @@ TAKE_DESC    <- c("ball", "blocked_ball", "called_strike", "hit_by_pitch")
 IN_PLAY_DESC <- "hit_into_play"
 NON_COMPETITIVE_DESC <- c("pitchout", "intent_ball", "automatic_ball", "automatic_strike")
 
-# Relabel corrected pitches; a "REMOVED" correction drops the pitch.
+# Relabel corrected pitches; a "REMOVED" correction drops the pitch
 apply_corrections <- function(d, corr) {
   if (is.null(corr) || nrow(corr) == 0) return(d)
-  # Corrections should use app labels; a Savant code (e.g. "SC") is mapped to its label.
+  # Accept Savant codes (e.g. "SC") by mapping them to app labels
   labels <- c(unique(pitch_type_table()$label), "REMOVED")
   fixed <- ifelse(corr$new_pitch_type %in% labels, corr$new_pitch_type, map_pitch_type(corr$new_pitch_type))
   bad <- unique(corr$new_pitch_type[is.na(fixed)])
@@ -358,6 +332,7 @@ apply_corrections <- function(d, corr) {
   d[d$pitch_type != "REMOVED" | is.na(d$pitch_type), ]
 }
 
+# 0/1 swing, whiff, take, called strike and in-play flags
 outcome_flags <- function(description) {
   tibble::tibble(
     swing         = as.integer(description %in% SWING_DESC),
@@ -368,10 +343,12 @@ outcome_flags <- function(description) {
   )
 }
 
+# Drop pitchouts, intentional and automatic calls, and unlabeled pitches
 exclude_non_competitive <- function(d) {
   d[!(d$description %in% NON_COMPETITIVE_DESC) & !is.na(d$pitch_type), ]
 }
 
+# Season corrections file, or NULL if there is none
 read_corrections <- function(season) {
   f <- file.path(repo_root(), "corrections", sprintf("pitch_corrections_%s.csv", season))
   if (!file.exists(f)) return(NULL)
@@ -400,17 +377,15 @@ load_pitches <- function(level, season) {
   d <- d %>%
     dplyr::left_join(dplyr::select(sched, game_pk, venue_id), by = "game_pk") %>%
     dplyr::left_join(dplyr::select(air, game_pk, rho, indoor), by = "game_pk")
-  # A game missing from the schedule (rare) gets standard air rather than NA.
+  # A game missing from the schedule gets standard air rather than NA
   d$rho <- dplyr::coalesce(d$rho, RHO_REF)
   d$indoor <- dplyr::coalesce(d$indoor, FALSE)
   d
 }
 
-# ==== prepare =============================================================================
+# Prepare
 
-# Stage 1 of P1: one level-season of pitches, mirrored, air-neutral, with physics
-# columns and per-park tracking offsets removed. Raw pfx_x / pfx_z are kept for the
-# app's raw-vs-neutral display (README 6).
+# Prepared pitches: mirrored, air-neutral, physics added, park offsets removed
 
 prepared_key <- function(level, season) sprintf("processed/prepared/%s/%s.parquet", level, season)
 park_offsets_key <- function(level, season) sprintf("processed/park_offsets/%s/%s.parquet", level, season)
@@ -418,8 +393,9 @@ features_key <- function(level, season) sprintf("processed/features/%s/%s.parque
 
 prepare_pitches <- function(level, season) {
   d <- load_pitches(level, season)
+  # Keep the reported plate location before any shift
   d$plate_x_reported <- d$plate_x; d$plate_z_reported <- d$plate_z
-  if (is_abs_era(level, season)) d <- to_front_plane(d)   # see R/clean.R
+  if (is_abs_era(level, season)) d <- to_front_plane(d)  # move ABS-era locations to the front plane
   d <- prepare_mirror(d)
   aa <- approach_angles(d$vx0, d$vy0, d$vz0, d$ax, d$ay, d$az)
   d$vaa <- aa$vaa

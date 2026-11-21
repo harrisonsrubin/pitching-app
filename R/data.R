@@ -1,10 +1,8 @@
-# Data: configuration, the private store, polite HTTP, and the fetchers for Statcast, the MLB Stats API,
-# weather and FanGraphs, with the nightly ingest, backfill and data-quality checks.
+# Data config, storage, HTTP, fetchers, ingest, backfill and quality checks
 
-# ==== config ==============================================================================
+# Config
 
-# Project-wide settings. Every other file reads seasons, levels, and paths from here.
-
+# Find the repo root by walking up until R/load.R exists
 repo_root <- function() {
   if (exists(".pv_root", envir = globalenv())) return(get(".pv_root", envir = globalenv()))
   root <- normalizePath(getwd())
@@ -16,10 +14,11 @@ repo_root <- function() {
   root
 }
 
+# Project-wide settings: seasons, levels, paths and model parameters
 cfg <- function() {
   data_dir <- Sys.getenv("PV_DATA_DIR", unset = "")
   if (!nzchar(data_dir)) data_dir <- file.path(repo_root(), "data")
-  last <- last_season()   # R/data.R: rolls to 2027 once its first game is played
+  last <- last_season()  # rolls to the next season once its first game is played
   list(
     seasons_mlb   = 2020:last,
     seasons_aaa   = 2023:last,
@@ -27,7 +26,7 @@ cfg <- function() {
     sport_ids     = c(MLB = 1L, AAA = 11L),
     data_dir      = data_dir,
     user_agent    = "pitching-app-ingest/0.1",
-    # P1 pitch models: training seasons (README 5.2), grade anchor seasons (README 7.6)
+    # Pitch models: training seasons and grade anchor seasons
     seasons_train = 2023:last,
     seasons_ref   = 2023:2025,
     recency_decay = 0.8,
@@ -42,23 +41,19 @@ cfg <- function() {
 
 `%>%` <- magrittr::`%>%`
 
-# ==== seasons =============================================================================
+# Seasons
 
-# The latest season the pipeline covers (README "Season rollover", P2 design 7): the
-# latest year whose MLB regular season has started, so 2027 joins every season list
-# once its first game has been played. Never below 2026. Evidence: a stored schedule
-# with a game on or before today, or an ingested Statcast day file (the nightly job
-# always has these; current-season schedules are not cached).
-# Memoized per process for each (data dir, date), since cfg() calls it often.
-
+# Cache for last_season(), keyed by data dir and date
 .pv_seasons <- new.env(parent = emptyenv())
 
+# Latest season whose first MLB game has been played, never below 2026
 last_season <- function(today = getOption("pv.today", Sys.Date())) {
   today <- as.Date(today)
   data_dir <- Sys.getenv("PV_DATA_DIR", unset = "")
   if (!nzchar(data_dir)) data_dir <- file.path(repo_root(), "data")
   memo <- paste(data_dir, today)
   if (!is.null(.pv_seasons[[memo]])) return(.pv_seasons[[memo]])
+  # Seasons with a stored schedule game on or before today
   files <- list.files(file.path(data_dir, "raw", "statsapi", "schedule", "MLB"),
                       pattern = "^\\d{4}\\.parquet$", full.names = TRUE)
   started <- vapply(files, function(f) {
@@ -66,6 +61,7 @@ last_season <- function(today = getOption("pv.today", Sys.Date())) {
     length(d) > 0 && any(as.Date(d) <= today)
   }, logical(1))
   seasons <- as.integer(sub("\\.parquet$", "", basename(files)))[started]
+  # Plus any season with an ingested Statcast day file
   days <- list.files(file.path(data_dir, "raw", "statcast", "MLB"), pattern = "^\\d{4}-\\d{2}-\\d{2}\\.parquet$",
                      recursive = TRUE)
   day_dates <- as.Date(sub("\\.parquet$", "", basename(days)))
@@ -75,14 +71,13 @@ last_season <- function(today = getOption("pv.today", Sys.Date())) {
   out
 }
 
-# ==== store ===============================================================================
+# Store
 
-# Data store: parquet files under cfg()$data_dir, addressed by keys like
-# "raw/statcast/MLB/2025/2025-04-01.parquet". The same keys map to GitHub release
-# assets (slashes flattened to "__") so Actions can sync the store to a private repo.
+# Parquet store under cfg()$data_dir, mirrored to GitHub releases
 
 store_path <- function(key) file.path(cfg()$data_dir, key)
 
+# Write atomically via a temp file and rename
 store_write <- function(df, key) {
   path <- store_path(key)
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
@@ -99,30 +94,28 @@ store_read <- function(key) tibble::as_tibble(arrow::read_parquet(store_path(key
 
 store_exists <- function(key) file.exists(store_path(key))
 
+# All data files under a store prefix
 store_list <- function(prefix) {
   base <- store_path(prefix)
   if (!dir.exists(base)) return(character())
-  files <- list.files(base, pattern = "\\.(parquet|txt)$", recursive = TRUE)   # data + LightGBM boosters
+  files <- list.files(base, pattern = "\\.(parquet|txt)$", recursive = TRUE)  # data + LightGBM boosters
   sort(file.path(prefix, files))
 }
 
-# One release per store directory (e.g. "raw--statcast--MLB--2026"), so no release
-# comes near GitHub's per-release asset limit. Assets keep their file names.
+# One release per store directory, e.g. "raw--statcast--MLB--2026"
 release_tag <- function(key) gsub("/", "--", dirname(key), fixed = TRUE)
 
-# The one place that shells out to the GitHub CLI, so tests can mock it. `token`
-# overrides GH_TOKEN for one call (publishing to the app repo uses its own token).
-# system2() goes through the shell, so every argument is quoted (e.g. "Data store"),
-# and the pager is off: `gh release view` would otherwise wait for a keypress.
+# Only place that calls the gh CLI (mockable); pager off so gh never waits
 gh_run <- function(args, token = NULL) {
   env <- c("GH_PAGER=cat", "PAGER=cat", if (!is.null(token)) paste0("GH_TOKEN=", shQuote(token)))
   system2("gh", shQuote(args), env = env)
 }
 
-# Text output of a gh call (mockable like gh_run).
+# Text output of a gh call
 gh_output <- function(args) suppressWarnings(system2("gh", shQuote(args), stdout = TRUE, stderr = FALSE,
                                                     env = c("GH_PAGER=cat", "PAGER=cat")))
 
+# Create the release if it does not exist yet
 ensure_release <- function(repo, tag) {
   if (identical(as.integer(gh_run(c("release", "view", tag, "--repo", repo))), 0L)) return(invisible(tag))
   status <- gh_run(c("release", "create", tag, "--repo", repo, "--title", tag, "--notes", "Data store"))
@@ -130,6 +123,7 @@ ensure_release <- function(repo, tag) {
   invisible(tag)
 }
 
+# Upload one store file to its release
 release_upload <- function(key, repo, tag = release_tag(key)) {
   ensure_release(repo, tag)
   status <- gh_run(c("release", "upload", tag, store_path(key), "--repo", repo, "--clobber"))
@@ -137,7 +131,7 @@ release_upload <- function(key, repo, tag = release_tag(key)) {
   invisible(key)
 }
 
-# Restores every asset of the release that holds `prefix` (a store directory).
+# Restore every asset of the release holding a store directory
 release_download_dir <- function(prefix, repo) {
   dest <- store_path(prefix)
   dir.create(dest, recursive = TRUE, showWarnings = FALSE)
@@ -147,7 +141,7 @@ release_download_dir <- function(prefix, repo) {
   invisible(store_list(prefix))
 }
 
-# Restores one file from its directory's release.
+# Restore one file from its directory's release
 release_download_file <- function(key, repo) {
   dest <- dirname(store_path(key))
   dir.create(dest, recursive = TRUE, showWarnings = FALSE)
@@ -157,13 +151,10 @@ release_download_file <- function(key, repo) {
   invisible(key)
 }
 
-# Uploads every file under a store directory, one gh call per release per `batch` files,
-# skipping files the release already holds at the same size (unless `force`). GitHub
-# allows 5,000 API calls an hour, so one call per file does not scale to a full store.
-# GitHub also caps uploads per hour separately from API calls, so each batch is followed
-# by a pause of `seconds_per_file` per file sent.
+# Pause between upload batches (its own function so tests can skip it)
 upload_pause <- function(seconds) Sys.sleep(seconds)
 
+# Upload a store directory in batches, skipping assets already there at the same size
 release_upload_dir <- function(prefix, repo, batch = 50, force = FALSE, seconds_per_file = 1) {
   keys <- store_list(prefix)
   for (tag in unique(release_tag(keys))) {
@@ -176,6 +167,7 @@ release_upload_dir <- function(prefix, repo, batch = 50, force = FALSE, seconds_
       sizes <- stats::setNames(as.numeric(vapply(have, `[`, "", 2)), vapply(have, `[`, "", 1))
       k <- k[!(basename(k) %in% names(sizes) & sizes[basename(k)] == file.size(store_path(k)))]
     }
+    # Pause after each batch to stay under GitHub's upload rate limit
     for (chunk in split(k, ceiling(seq_along(k) / batch))) {
       status <- gh_run(c("release", "upload", tag, store_path(chunk), "--repo", repo, "--clobber"))
       if (!identical(as.integer(status), 0L)) stop("gh release upload failed for ", tag)
@@ -186,10 +178,9 @@ release_upload_dir <- function(prefix, repo, batch = 50, force = FALSE, seconds_
   invisible(keys)
 }
 
-# ==== http ================================================================================
+# HTTP
 
-# Polite HTTP GET shared by every fetcher: generic User-Agent, retries with
-# exponential backoff on 429 / 5xx / timeouts, and at least 1 second between calls.
+# Polite GET: generic User-Agent, retries with backoff, 1+ second between calls
 
 .pv_http <- new.env(parent = emptyenv())
 .pv_http$last_call <- 0
@@ -212,29 +203,16 @@ http_get <- function(url, query = list(), tries = 4, min_gap = 1, timeout = 120)
   httr2::req_perform(req)
 }
 
-# ==== savant ==============================================================================
+# Savant
 
-# Baseball Savant pitch-level Statcast, one day at a time, for MLB and Triple-A.
-#
-# Endpoints (verified 2026-11-19 against 2025-06-01):
-#   MLB: https://baseballsavant.mlb.com/statcast_search/csv
-#   AAA: https://baseballsavant.mlb.com/statcast-search-minors/csv
-#        plus minors=true and hfLevel=AAA|. Without minors=true this endpoint
-#        silently returns MLB pitches.
-#   Shared params: all=true, type=details, player_type=pitcher, hfGT=R|,
-#                  game_date_gt=<date>, game_date_lt=<date> (same date = one day).
-#   Response: CSV with a UTF-8 byte-order mark, 119 columns, identical for both levels
-#   (~4,200 MLB and ~4,600 AAA pitches on a 15-game day). Header-only when no games.
-#
-# Column coverage at AAA (2025-06-01): arm_angle, release_extension, spin_axis,
-#   9-parameter trajectory, sz_top/sz_bot, delta_run_exp all present. bat_speed,
-#   swing_length, attack_angle are empty at AAA (bat tracking is MLB-only).
+# Daily Statcast CSVs from Savant; AAA needs minors=true or it silently returns MLB
 
 SAVANT_URLS <- c(
   MLB = "https://baseballsavant.mlb.com/statcast_search/csv",
   AAA = "https://baseballsavant.mlb.com/statcast-search-minors/csv"
 )
 
+# Columns parsed as numbers; everything else stays character
 statcast_numeric_cols <- function() {
   c("release_speed", "release_pos_x", "release_pos_y", "release_pos_z", "release_extension",
     "pfx_x", "pfx_z", "plate_x", "plate_z", "sz_top", "sz_bot",
@@ -254,6 +232,7 @@ statcast_numeric_cols <- function() {
     "hc_x", "hc_y", "spin_dir")
 }
 
+# URL and query for one day at one level
 savant_request <- function(date, level) {
   if (!(length(level) == 1 && level %in% names(SAVANT_URLS))) {
     stop("level must be one of: ", paste(names(SAVANT_URLS), collapse = ", "))
@@ -269,8 +248,9 @@ pv_bad_response <- function(msg) {
   rlang::abort(msg, class = "pv_bad_response")
 }
 
+# Parse Savant CSV text, keeping regular-season pitches and adding pitch_uid
 parse_statcast_csv <- function(text, level) {
-  text <- sub("^﻿", "", text)
+  text <- sub("^﻿", "", text)  # strip the byte-order mark
   if (grepl("^\\s*<", text)) pv_bad_response("Savant returned HTML instead of CSV")
 
   d <- readr::read_csv(I(text), col_types = readr::cols(.default = readr::col_character()),
@@ -299,11 +279,9 @@ fetch_statcast_day <- function(date, level) {
   parse_statcast_csv(httr2::resp_body_string(resp, encoding = "UTF-8"), level)
 }
 
-# ==== statsapi ============================================================================
+# Stats API
 
-# MLB Stats API: schedules (with venue and game weather), venues, season pitching
-# stats, and transactions. Each fetcher is a thin wrapper around a pure parse_*()
-# function so the parsers can be tested on synthetic JSON.
+# MLB Stats API fetchers; each wraps a pure parse_*() function for testing
 
 STATSAPI <- "https://statsapi.mlb.com/api/v1"
 
@@ -312,12 +290,9 @@ statsapi_json <- function(path, query = list()) {
   httr2::resp_body_json(resp, simplifyVector = FALSE)
 }
 
-`%|||%` <- function(x, y) if (is.null(x)) y else x
+`%|||%` <- function(x, y) if (is.null(x)) y else x  # default for missing JSON fields
 
-# ── Schedules ─────────────────────────────────────────────────────────────────
-# Finished games only: codedGameState "F" (final, including completed early) or
-# "O" (game over). Postponed ("D") and suspended games are dropped; a suspended game
-# reappears as final on the date it is resumed, and the later entry is kept.
+# Schedules: finished games only, resumed games kept on their final date
 FINISHED_STATES <- c("F", "O")
 
 parse_schedule <- function(json, level) {
@@ -353,13 +328,14 @@ parse_schedule <- function(json, level) {
 
 schedule_key <- function(season, level) sprintf("raw/statsapi/schedule/%s/%s.parquet", level, season)
 
+# Season schedule, cached once the season is over
 fetch_schedule <- function(season, level) {
   key <- schedule_key(season, level)
   if (store_exists(key)) return(store_read(key))
   json <- statsapi_json("/schedule", list(sportId = cfg()$sport_ids[[level]], season = season,
                                           gameType = "R", hydrate = "weather,venue"))
   s <- parse_schedule(json, level)
-  # Only cache seasons that are over; the current season keeps changing.
+  # Only cache seasons that are over; the current season keeps changing
   if (season < as.integer(format(Sys.Date(), "%Y")) || format(Sys.Date(), "%m") %in% c("11", "12")) {
     store_write(s, key)
   }
@@ -368,7 +344,7 @@ fetch_schedule <- function(season, level) {
 
 game_days <- function(season, level) sort(unique(fetch_schedule(season, level)$game_date))
 
-# ── Venues and the park table ─────────────────────────────────────────────────
+# Venues
 parse_venues <- function(json) {
   dplyr::bind_rows(lapply(json$venues, function(v) {
     loc <- v$location %|||% list()
@@ -393,8 +369,7 @@ fetch_venues <- function(ids) {
   }))
 }
 
-
-# ── People ────────────────────────────────────────────────────────────────────
+# People
 parse_people <- function(json) {
   p <- json$people %|||% list()
   tibble::tibble(
@@ -411,9 +386,9 @@ fetch_people <- function(ids, chunk = 150) {
     parse_people(statsapi_json("/people", list(personIds = paste(g, collapse = ","))))))
 }
 
-# ==== statsapi_stats ======================================================================
+# Season pitching stats
 
-# ── Season pitching stats ─────────────────────────────────────────────────────
+# Convert innings pitched like "5.2" to outs
 ip_to_outs <- function(ip) {
   ip <- as.character(ip)
   whole <- suppressWarnings(as.integer(sub("\\..*$", "", ip)))
@@ -441,6 +416,7 @@ parse_pitching_stats <- function(json, season, level) {
   }))
 }
 
+# Season pitching stats for one level, fetched in pages
 fetch_pitching_stats <- function(season, level, limit = 5000) {
   out <- list(); offset <- 0
   repeat {
@@ -455,7 +431,7 @@ fetch_pitching_stats <- function(season, level, limit = 5000) {
   dplyr::bind_rows(out)
 }
 
-# ── Transactions ──────────────────────────────────────────────────────────────
+# Transactions: tag injured-list placements, activations and transfers
 classify_il <- function(description) {
   d <- tolower(description)
   il <- grepl("injured list", d, fixed = TRUE)
@@ -487,6 +463,7 @@ parse_transactions <- function(json) {
   dplyr::mutate(t, il_event = classify_il(description))
 }
 
+# Split a date range into calendar-month chunks
 month_chunks <- function(start_date, end_date) {
   starts <- seq(as.Date(format(start_date, "%Y-%m-01")), end_date, by = "month")
   starts[1] <- start_date
@@ -503,11 +480,9 @@ fetch_transactions <- function(start_date, end_date) {
   }))
 }
 
-# ==== weather =============================================================================
+# Weather
 
-# Historical weather at first pitch from Open-Meteo's archive API (free, no key).
-# Requested in GMT and joined to games on the UTC hour containing first pitch.
-# Indoor (roof-closed) handling happens later, when air density is computed (P1).
+# Hourly weather at first pitch from the Open-Meteo archive, joined on the UTC hour
 
 OPEN_METEO_ARCHIVE <- "https://archive-api.open-meteo.com/v1/archive"
 
@@ -536,6 +511,7 @@ fetch_hourly_weather <- function(lat, lon, start_date, end_date) {
   parse_open_meteo(httr2::resp_body_json(http_get(r$url, r$query)))
 }
 
+# Attach each game's weather from the hour containing first pitch
 join_game_weather <- function(games, hourly) {
   games %>%
     dplyr::mutate(time_utc = lubridate::floor_date(first_pitch_utc, "hour")) %>%
@@ -559,8 +535,7 @@ build_game_weather <- function(schedule, parks) {
   join_game_weather(dplyr::select(schedule, game_pk, game_date, venue_id, first_pitch_utc), hourly)
 }
 
-# The season's game weather: the backfilled season file plus every nightly daily file
-# of that season; one row per game, daily rows win (they are newer).
+# Season weather from the backfill file plus nightly files; daily rows win
 assemble_season_weather <- function(level, season) {
   base <- if (store_exists(game_weather_key(level, season))) store_read(game_weather_key(level, season)) else NULL
   days <- store_list(sprintf("raw/weather/daily/%s", level))
@@ -571,12 +546,9 @@ assemble_season_weather <- function(level, season) {
     dplyr::arrange(game_pk)
 }
 
-# ==== fangraphs ===========================================================================
+# FanGraphs
 
-# FanGraphs benchmarks (README 9): ERA, FIP, xFIP, SIERA, K-BB%, and full-season
-# Stuff+ / Location+ / Pitching+, from the free public leaderboard JSON (no
-# membership). Rows are kept in the private data store only; the public repo
-# publishes only the resulting correlations and errors.
+# FanGraphs leaderboard stats for benchmarking; raw rows stay in the private store
 
 FANGRAPHS_URL <- "https://www.fangraphs.com/api/leaders/major-league/data"
 
@@ -591,6 +563,7 @@ fangraphs_request <- function(season, type = 8) {
     httr2::req_user_agent(cfg()$user_agent)
 }
 
+# One row per pitcher-season from the leaderboard JSON
 parse_fangraphs <- function(json) {
   num <- function(r, k) if (is.null(r[[k]])) NA_real_ else as.numeric(r[[k]])
   rows <- lapply(json$data, function(r) tibble::tibble(
@@ -612,11 +585,9 @@ fetch_fangraphs <- function(season) {
   f[!is.na(f$mlbam_id), ]
 }
 
-# ==== parks ===============================================================================
+# Parks
 
-# Park reference table: one row per venue used by any MLB or AAA regular-season game
-# in the backfill seasons. Venue facts come from the Stats API; hand fixes in
-# reference/parks_overrides.csv are applied last.
+# One row per venue used in the backfill seasons, with hand fixes applied last
 
 build_parks <- function(schedules, venues, overrides = NULL) {
   used <- schedules %>%
@@ -646,9 +617,7 @@ read_park_overrides <- function() {
   readr::read_csv(p, show_col_types = FALSE, progress = FALSE)
 }
 
-# ── Elevation fill ────────────────────────────────────────────────────────────
-# The Stats API has no elevation for many AAA parks. Open-Meteo's free elevation
-# API (90 m terrain model) fills the gaps; it agrees with the Stats API on Coors Field.
+# Elevation fill: Open-Meteo terrain elevation for parks the Stats API lacks
 open_meteo_elevation_request <- function(lat, lon) {
   list(url = "https://api.open-meteo.com/v1/elevation",
        query = list(latitude = paste(lat, collapse = ","), longitude = paste(lon, collapse = ",")))
@@ -659,6 +628,7 @@ open_meteo_elevation <- function(lat, lon) {
   unlist(httr2::resp_body_json(http_get(r$url, r$query))$elevation)
 }
 
+# Fill missing elevations and record where each one came from
 fill_missing_elevation <- function(parks, lookup = open_meteo_elevation) {
   default_src <- ifelse(is.na(parks$elevation_ft), NA_character_, "statsapi")
   parks$elevation_source <- if ("elevation_source" %in% names(parks)) dplyr::coalesce(parks$elevation_source, default_src) else default_src
@@ -671,19 +641,9 @@ fill_missing_elevation <- function(parks, lookup = open_meteo_elevation) {
   parks
 }
 
-# ==== backfill ============================================================================
+# Backfill
 
-# Idempotent day-by-day Statcast backfill and per-season compaction.
-# A day file exists only if it was fetched, checked against the schedule, and fully
-# written, so a rerun resumes exactly where an interrupted run stopped.
-#
-# Day statuses:
-#   written          every finished game in the schedule is present
-#   written_partial  an old day (before the strict window) is missing a game even after
-#                    a retry; written anyway, because Savant will not fill it later
-#   skipped          the day file already exists
-#   empty_error / fetch_error / incomplete_error
-#                    nothing written; the run's caller exits non-zero (backfill_failed)
+# Resumable Statcast backfill: a day file exists only once it is complete
 
 statcast_day_key <- function(level, date) {
   date <- as.Date(date)
@@ -692,14 +652,16 @@ statcast_day_key <- function(level, date) {
 
 statcast_season_key <- function(level, season) sprintf("raw/statcast/%s/%s.parquet", level, season)
 
-# Finished games on a date, from the schedule.
+# Finished games on a date, from the schedule
 expected_game_pks <- function(date, level) {
   s <- fetch_schedule(as.integer(format(as.Date(date), "%Y")), level)
   s$game_pk[s$game_date == as.Date(date)]
 }
 
+# True if any day in the backfill log failed
 backfill_failed <- function(log) any(grepl("_error$", log$status))
 
+# Fetch, check and write each missing day file, logging a status per day
 backfill_statcast <- function(level, seasons, fetch = fetch_statcast_day, days = game_days,
                               expected = expected_game_pks, today = Sys.Date(),
                               strict_days = 7, retry_wait = 60,
@@ -730,10 +692,11 @@ backfill_statcast <- function(level, seasons, fetch = fetch_statcast_day, days =
     }
     res <- attempt(date)
     if (res$status != "written") {
-      # Retry once: Savant sometimes returns a busy page or posts games late.
+      # Retry once: Savant sometimes returns a busy page or posts games late
       if (retry_wait > 0) Sys.sleep(retry_wait)
       res <- attempt(date)
     }
+    # Old days still missing a game are written anyway; Savant won't fill them later
     if (res$status == "incomplete_error" && as.Date(date) < as.Date(today) - strict_days) {
       res$status <- "written_partial"
     }
@@ -756,9 +719,7 @@ backfill_statcast <- function(level, seasons, fetch = fetch_statcast_day, days =
   log
 }
 
-# Streams every day file of a season through duckdb into one parquet file, keeping
-# the latest game_date for each pitch_uid (resumed games). Never loads the season
-# into R, so it is safe on an 8 GB machine.
+# Merge a season's day files with duckdb, keeping the latest row per pitch_uid
 compact_season <- function(level, season) {
   dir <- store_path(sprintf("raw/statcast/%s/%s", level, season))
   key <- statcast_season_key(level, season)
@@ -780,28 +741,23 @@ compact_season <- function(level, season) {
   key
 }
 
-# ==== ingest ==============================================================================
+# Ingest
 
-# Helpers for the nightly ingest (run.R ingest_daily).
-
-# Re-check the last `window` days, not just yesterday, so a day Savant posted late
-# (or a failed night) is picked up on a later run. Existing day files are skipped.
+# Recheck the last few days so late Savant posts or failed nights get picked up
 ingest_dates <- function(today, window = 5) seq(as.Date(today) - window, as.Date(today) - 1, by = "day")
 
-# Open-Meteo's archive is built from reanalysis data and runs several days behind,
-# so weather is ingested for a day `lag` days back rather than yesterday.
+# Open-Meteo's archive lags several days, so weather runs a week behind
 weather_date <- function(today, lag = 7) as.Date(today) - lag
 
+# Weather is usable when most games have a temperature
 weather_usable <- function(w, min_share = 0.9) nrow(w) > 0 && mean(!is.na(w$temp_c)) >= min_share
 
-# Stats API files: a past season never changes once cached, but the current season
-# (and the current year's transactions) must be refetched every time.
+# Past seasons are fetched once; the current season is always refetched
 needs_fetch <- function(key, season, current) !store_exists(key) || season >= current
 
-# ==== validate ============================================================================
+# Validate
 
-# Data-quality checks on a backfilled Statcast season. Each check returns
-# tibble(check, value, pass); validate_statcast_season() stacks them.
+# Data-quality checks on a backfilled season; each returns tibble(check, value, pass)
 
 check_unique_uid <- function(d) {
   dup <- sum(duplicated(d$pitch_uid))
@@ -818,6 +774,7 @@ check_non_missing <- function(d, cols, bar = 0.97) {
   tibble::tibble(check = paste0("non_missing_", cols), value = unname(share), pass = unname(share >= bar))
 }
 
+# Minimum expected rows per season (2020 was a short season)
 row_bar <- function(level, season) {
   if (level == "MLB" && season == 2020) return(200000)
   if (level == "MLB") return(650000)

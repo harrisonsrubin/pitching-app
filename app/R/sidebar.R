@@ -1,26 +1,24 @@
-# Sidebar selection shared by every page.
+# Sidebar selection shared by every page
 
-# ==== sidebar =========================================================================
+# Sidebar
 
-# Sidebar: level, season, team, pitcher, batter side, min pitches, grade scale. Returns
-# sel$state() (the current selection) and sel$select() (jump to a pitcher, used by the
-# Leaderboard). A traded pitcher is listed under every team he pitched for.
-
+# Seasons available at a level, newest first
 seasons_for <- function(pitchers, level) sort(unique(pitchers$season[pitchers$level == level]), decreasing = TRUE)
 
+# Teams for a level and season (traded pitchers count for each team)
 team_choices <- function(pitchers, level, season) {
   p <- pitchers[pitchers$level == level & pitchers$season == season, ]
   sort(unique(unlist(strsplit(p$teams, ",", fixed = TRUE))))
 }
 
+# Pitchers for the selection, sorted by last name
 pitchers_for <- function(pitchers, level, season, team) {
   p <- pitchers[pitchers$level == level & pitchers$season == season, ]
   if (!identical(team, "All")) p <- p[vapply(strsplit(p$teams, ",", fixed = TRUE), function(t) team %in% t, TRUE), ]
   p[order(last_name_key(p$name), p$name, -p$pitches), ]
 }
 
-# Sort key for "last name, A-Z": drops suffixes (Jr., III) and keeps particles, so
-# "Elvis De La Cruz" files under D like a box score would list him.
+# Last-name sort key: drop suffixes, keep particles ("De La Cruz" sorts under D)
 NAME_SUFFIXES <- c("jr", "sr", "ii", "iii", "iv", "v")
 NAME_PARTICLES <- c("de", "del", "della", "la", "las", "los", "da", "di", "van", "von", "der", "st", "le", "mac")
 last_name_key <- function(name) {
@@ -35,7 +33,7 @@ last_name_key <- function(name) {
   }, character(1), USE.NAMES = FALSE)
 }
 
-# "Name, Triple-A 2025": names the sidebar's pitcher on pages that show one pitcher.
+# Page heading like "Name, Triple-A 2025"
 pitcher_heading <- function(pitchers, s) {
   p <- pitchers[pitchers$pitcher == s$pitcher & pitchers$level == s$level & pitchers$season == s$season, ]
   if (nrow(p) == 0) return(NULL)
@@ -43,13 +41,16 @@ pitcher_heading <- function(pitchers, s) {
                                  LEVEL_LABELS[[s$level]], s$season))
 }
 
+# Dropdown label: name and team
 pitcher_label <- function(p) sprintf("%s (%s)", ifelse(is.na(p$name), paste("ID", p$pitcher), p$name), p$team_abbrev)
 
+# Refill the pitcher dropdown
 set_pitcher_choices <- function(session, p, selected) {
   updateSelectizeInput(session, "pitcher", choices = stats::setNames(p$pitcher, pitcher_label(p)),
                        selected = selected, server = TRUE)
 }
 
+# Sidebar controls
 sidebarUI <- function(id) {
   ns <- NS(id)
   tagList(
@@ -64,11 +65,10 @@ sidebarUI <- function(id) {
   )
 }
 
+# Returns the current selection and a select() to jump to a pitcher
 sidebarServer <- function(id, outputs) {
   moduleServer(id, function(input, output, session) {
-    # A Leaderboard jump: the target lives in a plain variable (clearing it must not
-    # re-trigger anything) and `jump` counts requests so the pitcher observer fires even
-    # when level, season and team are unchanged.
+    # Pending jump target; jump() forces the pitcher observer to fire
     target <- NULL
     jump <- reactiveVal(0L)
     pending <- function() target
@@ -82,20 +82,19 @@ sidebarServer <- function(id, outputs) {
       updateSelectInput(session, "team", choices = c("All", team_choices(outputs$pitchers, input$level, as.integer(input$season))),
                         selected = "All")
     })
-    # Also fires on jump(): a Leaderboard click on the current level and season
-    # changes no other input, but must still move to the clicked pitcher.
+    # Refill pitchers on any selection change or jump
     observeEvent(list(input$level, input$season, input$team, jump()), {
       req(input$season, input$team)
       p <- pitchers_for(outputs$pitchers, input$level, as.integer(input$season), input$team)
       want <- pending()$pitcher
       if (!is.null(want) && !(want %in% p$pitcher)) {
         if (identical(pending()$season, as.integer(input$season)) && !identical(input$team, "All")) return()
-        if (!identical(pending()$season, as.integer(input$season))) return()   # season update still coming
+        if (!identical(pending()$season, as.integer(input$season))) return()  # season update still coming
       }
       current <- suppressWarnings(as.integer(input$pitcher))
       sel <- if (!is.null(want) && want %in% p$pitcher) want
-             else if (length(current) == 1 && !is.na(current) && current %in% p$pitcher) current   # keep him
-             else p$pitcher[which.max(p$pitches)]   # default: his team's busiest pitcher
+             else if (length(current) == 1 && !is.na(current) && current %in% p$pitcher) current  # keep current pitcher
+             else p$pitcher[which.max(p$pitches)]  # default: busiest pitcher
       set_pitcher_choices(session, p, sel)
       if (!is.null(want) && want %in% p$pitcher) target <<- NULL
     }, ignoreNULL = FALSE)
@@ -104,6 +103,7 @@ sidebarServer <- function(id, outputs) {
       list(level = input$level, season = as.integer(input$season), team = input$team,
            pitcher = as.integer(input$pitcher), side = input$side, min_pitches = input$min_pitches, scale = input$scale)
     })
+    # Jump to a pitcher from another page
     select <- function(level, season, pitcher) {
       target <<- list(season = as.integer(season), pitcher = as.integer(pitcher))
       jump(jump() + 1L)
@@ -115,7 +115,7 @@ sidebarServer <- function(id, outputs) {
   })
 }
 
-# The selected pitcher's pitches, with this session's pitch-type edits applied.
+# Selected pitcher's pitches with this session's pitch-type edits applied
 displayServer <- function(cfg, sel, cache) {
   edits <- reactiveVal(tibble::tibble(pitch_uid = character(), new_pitch_type = character()))
   raw <- reactive({

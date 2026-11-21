@@ -1,12 +1,12 @@
-# Pitching app (README 10). Public and read-only; the Pitch-Type Editor unlocks with the
-# admin password. Pages are modules in app/R/ (Shiny loads that folder automatically).
+# Pitching app: public and read-only, the editor unlocks with the admin password
 library(shiny)
 library(bslib)
 
 cfg <- app_config()
 outputs <- load_outputs(cfg)
-cache <- bucket_cache(max = 12L)   # shared by every session
+cache <- bucket_cache(max = 12L)  # shared by every session
 
+# Navbar with one tab per page module
 ui <- page_navbar(
   title = "Pitch grades",
   id = "main_nav",
@@ -27,6 +27,7 @@ ui <- page_navbar(
   nav_panel("Scorecard", scorecardUI("scorecard"))
 )
 
+# Wire the shared sidebar selection into every page
 server <- function(input, output, session) {
   sel <- sidebarServer("sel", outputs)
   display <- displayServer(cfg, sel, cache)

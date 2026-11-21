@@ -69,7 +69,7 @@ test_that("rescore runs on corrections pushes to main and queues instead of over
   expect_false(isTRUE(y$concurrency[["cancel-in-progress"]]))
   r <- wf_runs(y)
   for (s in c("run.R changed_seasons", "run.R fetch_inputs", "run.R update_season", "run.R publish season")) expect_match(r, s, fixed = TRUE)
-  expect_match(r, "--status success", fixed = TRUE)   # diff from the last successful rescore
+  expect_match(r, "--status success", fixed = TRUE)  # diff from the last successful rescore
 })
 
 test_that("deploy only fires on app changes and fast-forwards the deploy branch", {
@@ -117,10 +117,10 @@ test_that("a season with ingested day files is treated as current and compacted,
 test_that("rescore takes the manual seasons input through env and validates it; last-success lookup is on main", {
   y <- wf("rescore.yml")
   r <- wf_runs(y)
-  expect_false(grepl("${{ github.event.inputs.seasons }}", r, fixed = TRUE))   # never pasted into the shell
+  expect_false(grepl("${{ github.event.inputs.seasons }}", r, fixed = TRUE))  # never pasted into the shell
   step <- Filter(function(s) grepl("run.R changed_seasons", s$run %||% ""), y$jobs$rescore$steps)[[1]]
   expect_equal(step$env$SEASONS_INPUT, "${{ github.event.inputs.seasons }}")
-  expect_match(r, "=~ ^[0-9]{4}(\\ [0-9]{4})*$", fixed = TRUE)   # whole-string bash match, not grep
+  expect_match(r, "=~ ^[0-9]{4}(\\ [0-9]{4})*$", fixed = TRUE)  # whole-string bash match, not grep
   expect_match(r, "--branch main", fixed = TRUE)
 })
 
@@ -134,7 +134,7 @@ test_that("the rescore seasons check rejects multi-line and malformed input", {
   y <- wf("rescore.yml")
   run <- Filter(function(s) grepl("run.R changed_seasons", s$run %||% ""), y$jobs$rescore$steps)[[1]]$run
   lines <- strsplit(run, "\n")[[1]]
-  start <- grep("SEASONS_INPUT", lines)[2]   # the validation block after the -n test
+  start <- grep("SEASONS_INPUT", lines)[2]  # the validation block after the -n test
   check <- paste(lines[start:(start + 2)], collapse = "\n")
   ok <- function(input) {
     f <- tempfile(fileext = ".sh")

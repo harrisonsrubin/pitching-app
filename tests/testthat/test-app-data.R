@@ -25,9 +25,9 @@ test_that("fetch_display returns only that pitcher and caches the bucket", {
   d <- fetch_display(cfg, "MLB", 2026L, 102L, cache)
   expect_equal(unique(d$pitcher), 102L)
   unlink(file.path(dir, "display"), recursive = TRUE)
-  d2 <- fetch_display(cfg, "MLB", 2026L, 102L, cache)   # served from the cache
+  d2 <- fetch_display(cfg, "MLB", 2026L, 102L, cache)  # served from the cache
   expect_equal(nrow(d2), nrow(d))
-  expect_null(fetch_display(cfg, "MLB", 2026L, 101L, bucket_cache()))   # files gone, no cache: NULL, no error
+  expect_null(fetch_display(cfg, "MLB", 2026L, 101L, bucket_cache()))  # files gone, no cache: NULL, no error
 })
 
 remote_cfg <- function(token = "secret-token") {
@@ -65,7 +65,7 @@ test_that("fetch_display downloads the pitcher's bucket from the private release
       return(httr2::response(status_code = 200, body = readBin(bucket, "raw", file.size(bucket))))
     httr2::response(status_code = 404)
   })
-  d <- fetch_display(remote_cfg(), "MLB", 2026L, 102L, bucket_cache())   # 102 %% 32 = 6
+  d <- fetch_display(remote_cfg(), "MLB", 2026L, 102L, bucket_cache())  # 102 %% 32 = 6
   expect_equal(unique(d$pitcher), 102L)
   expect_true(all(grepl("^Bearer secret-token$", seen$auth)))
   expect_true(any(grepl("/assets/66$", seen$urls)))
@@ -103,9 +103,9 @@ test_that("the bucket cache is shared and capped", {
   local_app_fixture()
   cache <- bucket_cache(max = 2)
   cfg <- app_config()
-  for (p in c(101L, 102L, 103L)) fetch_display(cfg, "MLB", 2026L, p, cache)   # three different buckets
+  for (p in c(101L, 102L, 103L)) fetch_display(cfg, "MLB", 2026L, p, cache)  # three different buckets
   expect_equal(cache_size(cache), 2L)
-  expect_false(cache_has(cache, "MLB 2026 5"))   # 101 %% 32: the oldest, evicted
+  expect_false(cache_has(cache, "MLB 2026 5"))  # 101 %% 32: the oldest, evicted
 })
 
 test_that("a failed pitch-data download is logged with its reason, never the token", {

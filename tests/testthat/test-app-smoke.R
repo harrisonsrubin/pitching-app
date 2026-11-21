@@ -39,7 +39,7 @@ test_that("app builds in a clean R process (no pipeline globals)", {
   dir <- withr::local_tempdir(); make_app_fixture(dir)
   out <- withr::with_envvar(c(PV_APP_LOCAL = "1", PV_DATA_DIR = dir), system2(
     file.path(R.home("bin"), "Rscript"),
-    c("-e", shQuote(sprintf("a <- shiny::shinyAppDir('%s'); cat('APP_OK')", file.path(repo_root(), "app")))),
+    c("-e", shQuote(sprintf("a <- shiny::shinyAppDir('%s'); writeLines('APP_OK')", file.path(repo_root(), "app")))),
     stdout = TRUE, stderr = TRUE))
   expect_true(any(grepl("APP_OK", out)), info = paste(out, collapse = "\n"))
 })

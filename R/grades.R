@@ -1,17 +1,10 @@
-# Grades and app aggregates: 20-80 grades, pitcher index, display files, Stuff Map / command /
-# tunnel aggregates.
+# Grades, pitcher index, display files, and app aggregates
 
-# ==== grades ==============================================================================
+# Grades
 
-# Grades (README 7.6). Pitch-level xRV is aggregated to pitcher × pitch type with
-# hierarchical shrinkage: a pitcher effect shared across his whole arsenal plus a
-# pitcher-by-pitch-type effect, so what a pitcher shows on his main pitches informs
-# his low-sample ones. Season-only fits (no carry-over prior), so stickiness is not
-# inflated by construction. 20-80 scale: 50 = reference-season average, 10 points =
-# one standard deviation of estimated true talent (MLB 2023–2025).
+Z90 <- stats::qnorm(0.95)  # half-width of a 90% interval in SDs
 
-Z90 <- stats::qnorm(0.95)   # 1.6449: half-width of a 90% interval in SDs
-
+# Shrink xRV to pitcher and pitcher-by-type effects so main pitches inform rare ones
 fit_grades <- function(x, col) {
   x <- x[!is.na(x[[col]]) & !is.na(x$pitch_type), ]
   df <- data.frame(y = x[[col]], pitch_type = factor(x$pitch_type),
@@ -48,7 +41,7 @@ fit_grades <- function(x, col) {
        mean_all = mean(x[[col]]), n_all = nrow(x))
 }
 
-# Anchors from reference-season fits of one facet: list of fit_grades() results.
+# 20-80 scale anchors (mean and one SD of true talent) from reference-season fits
 grade_anchors <- function(fits, facet) {
   s2p <- mean(sapply(fits, function(f) f$varcomp[["sigma2_p"]]))
   s2pt <- mean(sapply(fits, function(f) f$varcomp[["sigma2_pt"]]))
@@ -67,10 +60,10 @@ grade_anchors <- function(fits, facet) {
   )
 }
 
-# Lower expected run value is better for the pitcher, so the scale inverts.
+# Lower xRV is better for the pitcher, so the scale inverts
 to_grade <- function(est, mean, unit) 50 - 10 * (est - mean) / unit
 
-# Expected component rates (README 7.4), raw means; P3 shrinks them.
+# Expected swing, whiff, chase, called strike, and contact rates per pitch type
 component_rates <- function(x) {
   summarise_rates <- function(g) {
     g %>% dplyr::summarise(
@@ -89,10 +82,11 @@ component_rates <- function(x) {
   )
 }
 
+# Store paths
 grades_key <- function(level, season) sprintf("grades/%s/%s.parquet", level, season)
 components_key <- function(level, season) sprintf("components/%s/%s.parquet", level, season)
 
-# Pitcher's games in date order; odd/even game index for split-half reliability.
+# Tag each pitch's game as odd or even for split-half reliability
 game_half <- function(x) {
   g <- x %>% dplyr::distinct(pitcher, game_date, game_pk) %>%
     dplyr::arrange(pitcher, game_date, game_pk) %>%
@@ -101,7 +95,7 @@ game_half <- function(x) {
   ifelse(idx %% 2 == 1, "odd", "even")
 }
 
-# Grade table for one facet fit, using the saved anchors.
+# Grade table for one facet fit, by pitch type plus an ALL row per pitcher
 grade_rows <- function(fit, anchors, facet) {
   a <- anchors[anchors$facet == facet, ]
   ty <- a[a$scope == "type", ]; gl <- a[a$scope == "global", ]; pi_ <- a[a$scope == "pitcher", ]
@@ -127,14 +121,13 @@ grade_rows <- function(fit, anchors, facet) {
 
 GRADE_FACETS <- c("stuff", "location", "pitching")
 
+# Load the frozen grade anchors
 read_anchors <- function() {
   readr::read_csv(file.path(repo_root(), "models", "grade_anchors.csv"), show_col_types = FALSE,
                   col_types = readr::cols(facet = "c", scope = "c", pitch_type = "c", mean = "d", unit = "d"))
 }
 
-# Grades and component rates for one level-season on fixed anchors: full season, plus
-# odd/even game halves for MLB (split-half reliability). `fits` optionally supplies
-# already-computed full-season fits by facet.
+# Grades and component rates for a season, plus odd/even halves for MLB
 grade_season <- function(x, level, season, anchors, fits = NULL) {
   x$half <- game_half(x)
   halves <- if (level == "MLB") c("full", "odd", "even") else "full"
@@ -149,23 +142,19 @@ grade_season <- function(x, level, season, anchors, fits = NULL) {
   list(grades = grades, components = components)
 }
 
-# ==== pitcher_index =======================================================================
-
-# The app's pitcher list (P2 design 4.1): name, hand, team(s) and season line for every
-# pitcher with graded pitches. A pitcher's team in a game comes from Statcast (top of
-# the inning = the home team is pitching), so a traded pitcher is listed under every
-# team he pitched for; his current team is the one from his latest game.
+# Pitcher index
 
 outputs_key <- function(name) file.path("outputs", name)
 
+# App's pitcher list: name, hand, every team pitched for, and season line
 pitcher_index <- function(pitches, stats, people, level, season) {
   games <- pitches %>%
-    dplyr::mutate(team = ifelse(inning_topbot == "Top", home_team, away_team)) %>%
+    dplyr::mutate(team = ifelse(inning_topbot == "Top", home_team, away_team)) %>%  # home team pitches the top
     dplyr::group_by(pitcher) %>%
     dplyr::summarise(
       pitches = dplyr::n(),
       p_throws = dplyr::first(p_throws),
-      team_abbrev = team[order(game_date, game_pk, decreasing = TRUE)][1],
+      team_abbrev = team[order(game_date, game_pk, decreasing = TRUE)][1],  # team from latest game
       teams = paste(unique(team[order(game_date, game_pk)]), collapse = ","),
       .groups = "drop")
   games %>%
@@ -179,6 +168,7 @@ pitcher_index <- function(pitches, stats, people, level, season) {
 
 pitchers_key <- function(level, season) outputs_key(sprintf("pitchers_%s_%s.parquet", level, season))
 
+# Build and store the pitcher index for one level-season
 build_pitcher_index <- function(level, season) {
   p <- arrow::open_dataset(store_path(features_key(level, season))) %>%
     dplyr::select(pitcher, game_pk, game_date, home_team, away_team, inning_topbot, p_throws) %>%
@@ -191,13 +181,9 @@ build_pitcher_index <- function(level, season) {
   idx
 }
 
-# ==== display =============================================================================
+# Display
 
-# Pitch-level display data for the app (P2 design 4.2). Private: written to the private
-# store only, one file per pitcher bucket so a pitcher's whole season (trades included)
-# is one small download. Plus two aggregate references that are public outputs: league
-# movement ellipses by hand × type × arm-angle decile, and per-type xRV percentiles.
-
+# Pitch-level app data stays private, split into buckets so a pitcher is one small file
 N_BUCKETS <- 32L
 
 DISPLAY_COLS <- c("pitch_uid", "game_pk", "game_date", "pitcher", "batter", "stand", "p_throws",
@@ -211,8 +197,7 @@ display_key <- function(level, season, k) sprintf("display/%s/%s/bucket_%d.parqu
 movement_ref_key <- function(level, season) outputs_key(sprintf("movement_ref_%s_%s.parquet", level, season))
 pitch_pctl_key <- function(level, season) outputs_key(sprintf("pitch_pctl_%s_%s.parquet", level, season))
 
-# features: one level-season of feature rows (mirrored frame); xrv: pitch_uid + facet
-# xRVs; savant: pitch_uid + pitch_type_savant (Savant's label before corrections).
+# Join features, xRVs, and Savant labels, then unmirror lefties for display
 display_rows <- function(features, xrv, savant) {
   features %>%
     dplyr::inner_join(dplyr::select(xrv, pitch_uid, stuff_xrv, location_xrv, pitching_xrv), by = "pitch_uid") %>%
@@ -221,17 +206,20 @@ display_rows <- function(features, xrv, savant) {
     dplyr::select(dplyr::all_of(DISPLAY_COLS))
 }
 
+# Split pitches into one data frame per bucket
 split_buckets <- function(d) {
   k <- pitcher_bucket(d$pitcher)
   lapply(0:(N_BUCKETS - 1L), function(i) d[k == i, ])
 }
 
+# Write each bucket and return the row counts
 write_display <- function(level, season, d) {
   b <- split_buckets(d)
   for (i in seq_along(b)) store_write(b[[i]], display_key(level, season, i - 1L))
   invisible(vapply(b, nrow, 1L))
 }
 
+# League movement ellipses by hand, pitch type, and arm angle decile
 movement_ref <- function(d, min_n = 200) {
   d %>%
     dplyr::filter(!is.na(arm_angle), !is.na(hb), !is.na(ivb)) %>%
@@ -250,6 +238,7 @@ movement_ref <- function(d, min_n = 200) {
 
 PCTL_FACETS <- c("stuff", "location", "pitching")
 
+# xRV percentiles (0-100) for each pitch type and facet
 pitch_percentiles <- function(d) {
   dplyr::bind_rows(lapply(PCTL_FACETS, function(f) {
     d %>% dplyr::filter(!is.na(.data[[paste0(f, "_xrv")]])) %>%
@@ -260,19 +249,15 @@ pitch_percentiles <- function(d) {
   }))
 }
 
-# Percentile of each xRV among that type's pitches; lower xRV is better, so higher pctl.
+# Percentile of an xRV within its pitch type; lower xRV gets a higher percentile
 pctl_of <- function(xrv, q) {
   p <- stats::approx(q, seq(0, 100, 1), xout = xrv, rule = 2, ties = "ordered")$y
   round(100 - p)
 }
 
-# ==== aggregates ==========================================================================
+# Aggregates
 
-# Public per-pitcher aggregates for the P2b pages (Stuff Map, Command & Tunneling).
-# Descriptive numbers only: none of these is a new grade.
-
-# Statcast-style attack zones relative to each batter's own zone: distance from the
-# zone's center as a share of its half-width (0.83 ft, with the ball) or half-height.
+# Statcast-style attack zone, scaled to each batter's own strike zone
 attack_zone <- function(plate_x, plate_z, sz_top, sz_bot) {
   half_h <- (sz_top - sz_bot) / 2
   ok <- !is.na(plate_x) & !is.na(plate_z) & !is.na(half_h) & half_h > 0
@@ -282,8 +267,7 @@ attack_zone <- function(plate_x, plate_z, sz_top, sz_bot) {
   out
 }
 
-# Where each pitch is when the hitter must decide: the plane 23.8 ft in front of the
-# plate, found by running the pitch's own trajectory back from its plate location.
+# Pitch position at the decision point, 23.8 ft in front of the plate
 TUNNEL_FT <- 23.8
 tunnel_position <- function(d, y_from_front = TUNNEL_FT) {
   y_front <- 17 / 12
@@ -294,10 +278,10 @@ tunnel_position <- function(d, y_from_front = TUNNEL_FT) {
                  z_tun = d$plate_z - (d$vz0 * dt + 0.5 * d$az * dt2))
 }
 
-# Pitch types thrown fewer than this many times are not published: a row that small is
-# effectively one pitch's measurements, and pitch-level data stays private.
+# Minimum pitches to publish a row, so single pitches stay private
 MIN_PUBLISHED_N <- 5L
 
+# Average velo, movement, spin, extension, and arm angle per pitch type
 pitch_profiles <- function(display) {
   display %>%
     dplyr::group_by(pitcher, p_throws, pitch_type) %>%
@@ -307,6 +291,7 @@ pitch_profiles <- function(display) {
     dplyr::filter(n >= MIN_PUBLISHED_N)
 }
 
+# Zone and attack-zone rates per pitch type and overall
 command_rates <- function(display) {
   z <- display %>%
     dplyr::mutate(az = attack_zone(plate_x, plate_z, sz_top, sz_bot),
@@ -320,8 +305,7 @@ command_rates <- function(display) {
     dplyr::filter(n >= MIN_PUBLISHED_N)
 }
 
-# Per batter side: two pitches thrown mostly to different sides would otherwise look far
-# apart at the plate because of who they were thrown to, not deception.
+# Tunnel and plate centroids, split by batter side so platoon mix doesn't fake separation
 tunnel_centroids <- function(display, min_n = 20) {
   display %>%
     dplyr::filter(!is.na(x_tun), !is.na(z_tun), !is.na(plate_x), !is.na(plate_z), !is.na(stand)) %>%
@@ -336,7 +320,7 @@ command_key <- function(level, season) outputs_key(sprintf("command_%s_%s.parque
 tunnel_key <- function(level, season) outputs_key(sprintf("tunnel_%s_%s.parquet", level, season))
 ANCHORS_OUTPUT <- "outputs/grade_anchors.csv"
 
-# Publish the anchors these grades were built on, so the app's rolling grades use the same scale.
+# Publish the anchors so the app's rolling grades use the same scale
 write_anchors_output <- function(anchors) {
   path <- store_path(ANCHORS_OUTPUT)
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)

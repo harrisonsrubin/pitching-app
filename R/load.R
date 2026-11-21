@@ -1,8 +1,8 @@
-# Sources every file in R/ (except this one) in alphabetical order.
-# Usage, from anywhere inside the repo:  source("R/load.R")
+# Source every other file in R/ alphabetically; works from anywhere in the repo
 local({
   here <- normalizePath(getwd())
   root <- here
+  # Walk up until we find the repo root
   while (!file.exists(file.path(root, "R", "load.R"))) {
     parent <- dirname(root)
     if (identical(parent, root)) stop("Could not find the repo root (R/load.R) above ", here)

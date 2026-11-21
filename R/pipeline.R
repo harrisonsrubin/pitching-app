@@ -1,22 +1,19 @@
-# Pipeline: one level-season end to end, publishing outputs, and workflow helpers.
+# Pipeline: one level-season end to end, publishing outputs, and workflow helpers
 
-# ==== pipeline ============================================================================
+# Pipeline
 
-# One level-season through the pipeline (P2 design 7): features from prepared pitches,
-# then everything the app reads. Used by run.R update_season (nightly, rescore) and
-# run.R build_outputs (filling past seasons from stored features + xRV).
-
+# Build every model feature and the target from a season's prepared pitches
 build_features_season <- function(level, season, refs) {
   d <- store_read(prepared_key(level, season))
   d <- add_stuff_features(d, refs)
-  d <- harmonize_zone(d, refs$zone_map, is_abs_era(level, season))   # see R/clean.R
+  d <- harmonize_zone(d, refs$zone_map, is_abs_era(level, season))  # see R/clean.R
   d <- add_location_features(d)
   d <- add_sequence_features(d)
   d$target <- denoised_target(d, refs$bip)
   dplyr::select(d, -dplyr::any_of(c("vx0", "vy0", "vz0", "ax", "ay", "az")))
 }
 
-# Savant's own label for every pitch, before corrections.
+# Savant's own label for every pitch, before corrections
 savant_types <- function(level, season) {
   arrow::open_dataset(store_path(statcast_season_key(level, season))) %>%
     dplyr::select(pitch_uid, pitch_type) %>% dplyr::collect() %>%
@@ -24,10 +21,11 @@ savant_types <- function(level, season) {
     dplyr::distinct(pitch_uid, .keep_all = TRUE)
 }
 
+# Public output paths
 grades_output_key <- function(level, season) outputs_key(sprintf("grades_%s_%s.parquet", level, season))
 components_output_key <- function(level, season) outputs_key(sprintf("components_%s_%s.parquet", level, season))
 
-# Grades (frozen anchors) -> components -> pitcher index -> display + references.
+# Grades, components, pitcher index, aggregates, and display files for one level-season
 build_outputs <- function(level, season, anchors = read_anchors()) {
   x <- store_read(xrv_key(level, season))
   g <- grade_season(x, level, season, anchors)
@@ -40,7 +38,7 @@ build_outputs <- function(level, season, anchors = read_anchors()) {
   f <- store_read(features_key(level, season))
   d <- display_rows(f, x, savant_types(level, season))
   rm(f, x); gc()
-  # P2b aggregates: tunnel positions from each pitch's trajectory (prepared data)
+  # Tunnel positions from each pitch's trajectory
   tr <- arrow::open_dataset(store_path(prepared_key(level, season))) %>%
     dplyr::select(pitch_uid, vy0, ay, vx0, ax, vz0, az) %>% dplyr::collect()
   tr <- dplyr::inner_join(dplyr::select(d, pitch_uid, plate_x, plate_z), tr, by = "pitch_uid")
@@ -60,8 +58,7 @@ build_outputs <- function(level, season, anchors = read_anchors()) {
   invisible(TRUE)
 }
 
-# The season's schedule for prepare: the current season is always fetched live (its
-# schedule is never cached), past seasons come from the store.
+# Current season's schedule is fetched live, past seasons come from the store
 ensure_schedule <- function(level, season, repo, current) {
   key <- schedule_key(season, level)
   if (current) {
@@ -72,20 +69,18 @@ ensure_schedule <- function(level, season, repo, current) {
   invisible(key)
 }
 
-# The calendar year's season is "current": its Statcast lives as daily files in the
-# store (no compacted season file is uploaded), and its schedule is fetched live.
+# Current season = this calendar year (stored as daily files, schedule fetched live)
 is_current_season <- function(season, today = Sys.Date()) as.integer(season) == as.integer(format(as.Date(today), "%Y"))
 
+# Whether daily Statcast files exist for the season
 has_day_files <- function(level, season) length(store_list(sprintf("raw/statcast/%s/%s", level, season))) > 0
 
-# ==== publish =============================================================================
+# Publish
 
-# Publishing (P2 design 4): aggregate outputs to the public app repo's "outputs" release;
-# pitch-level display files to the private store only. Nothing under display/ is ever
-# passed to the public repo.
-
+# Aggregates go to the public app repo; pitch-level display files never do
 OUTPUTS_TAG <- "outputs"
 
+# Every public output file for one level-season
 outputs_for <- function(level, season) {
   c(grades_output_key(level, season), components_output_key(level, season), pitchers_key(level, season),
     movement_ref_key(level, season), pitch_pctl_key(level, season),
@@ -93,6 +88,7 @@ outputs_for <- function(level, season) {
     windows_key(level, season), parks_key(level, season))
 }
 
+# Upload outputs to the app repo's release, creating the release if needed
 publish_outputs <- function(keys, app_repo, token = NULL) {
   stopifnot(all(startsWith(keys, "outputs/")))
   missing <- keys[!file.exists(store_path(keys))]
@@ -107,7 +103,7 @@ publish_outputs <- function(keys, app_repo, token = NULL) {
   invisible(keys)
 }
 
-# Pitch-level data may only go to a private repo that is not the app repo.
+# Pitch-level data may only go to a private repo that is not the app repo
 assert_private_repo <- function(data_repo, app_repo) {
   if (identical(tolower(data_repo), tolower(app_repo))) stop("PV_DATA_REPO is the app repo; refusing to publish pitch data there")
   private <- tryCatch(gh_output(c("api", paste0("repos/", data_repo), "--jq", ".private")), error = function(e) "")
@@ -116,14 +112,15 @@ assert_private_repo <- function(data_repo, app_repo) {
   invisible(TRUE)
 }
 
+# Upload a season's display buckets to the private data repo
 publish_display <- function(level, season, data_repo) {
   keys <- vapply(0:(N_BUCKETS - 1L), function(k) display_key(level, season, k), "")
-  # Rebuilt files can keep their size, so display is always re-sent (in one batch).
+  # Rebuilt files can keep their size, so always re-send
   release_upload_dir(sprintf("display/%s/%s", level, season), data_repo, force = TRUE)
   invisible(keys)
 }
 
-# The scorecard page renders the committed scorecard markdown and chart.
+# Copy the committed scorecard markdown and chart into outputs
 stage_scorecard <- function() {
   dir.create(store_path("outputs"), recursive = TRUE, showWarnings = FALSE)
   md <- readLines(file.path(repo_root(), "scorecard", "p1.md"))
@@ -134,16 +131,14 @@ stage_scorecard <- function() {
   c("outputs/scorecard.md", "outputs/scorecard_chart.png")
 }
 
-# ==== workflow_helpers ====================================================================
+# Workflow helpers
 
-# Helpers the GitHub Actions workflows call (P2 design 6-7).
-
-# Seasons whose corrections file is among the changed paths of a push.
+# Seasons whose corrections file changed in a push
 changed_seasons <- function(paths) {
   m <- regmatches(paths, regexec("^corrections/pitch_corrections_(\\d{4})\\.csv$", paths))
   s <- vapply(m, function(x) if (length(x) == 2) x[2] else NA_character_, "")
   sort(unique(as.integer(stats::na.omit(s))))
 }
 
-# Levels that have data for a season (Triple-A Statcast starts in 2023).
+# Levels with data for a season (Triple-A Statcast starts in 2023)
 levels_for <- function(season) if (season >= min(cfg()$seasons_aaa)) c("MLB", "AAA") else "MLB"

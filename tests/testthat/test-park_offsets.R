@@ -31,10 +31,10 @@ test_that("a camera offset is removed equally for lefties and righties (offsets 
   set.seed(7)
   g <- expand.grid(pitcher = 1:40, venue_id = 1:3, rep = 1:30)
   g$p_throws <- ifelse(g$pitcher <= 25, "R", "L")
-  talent <- rnorm(40, 10, 3)[g$pitcher]                  # mirrored (arm-side) movement
-  camera <- c(1, 0, -1)[g$venue_id]                       # bias in raw catcher-view inches
+  talent <- rnorm(40, 10, 3)[g$pitcher]  # mirrored (arm-side) movement
+  camera <- c(1, 0, -1)[g$venue_id]  # bias in raw catcher-view inches
   sign <- ifelse(g$p_throws == "L", -1, 1)
-  g$hb <- sign * (sign * talent + camera)                 # what prepare_mirror produces
+  g$hb <- sign * (sign * talent + camera)  # what prepare_mirror produces
   g$pitch_type <- "4S"
   d <- tibble::as_tibble(g)
   out <- apply_park_offsets(d, fit_park_offsets(d, metrics = "hb", k = 0))

@@ -43,7 +43,7 @@ jobs:
           Rscript run.R sync_store upload raw/statsapi
       - name: Rebuild and publish the current season
         run: |
-          SEASON=$(Rscript -e 'source("R/load.R"); cat(last_season())')
+          SEASON=$(Rscript -e 'source("R/load.R"); writeLines(as.character(last_season()))')
           for LV in MLB AAA; do
             Rscript run.R fetch_inputs $LV $SEASON
             Rscript run.R update_season $LV $SEASON
@@ -58,4 +58,4 @@ jobs:
             Rscript run.R publish season $LV $SEASON
           done
       - name: Projections
-        run: Rscript run.R project $(Rscript -e 'source("R/load.R"); cat(last_season())')
+        run: Rscript run.R project $(Rscript -e 'source("R/load.R"); writeLines(as.character(last_season()))')

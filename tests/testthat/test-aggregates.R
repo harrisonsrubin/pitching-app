@@ -1,9 +1,9 @@
-zone_px <- function(m) m * 0.83   # horizontal distance giving max(u, v) = m at mid height
+zone_px <- function(m) m * 0.83  # horizontal distance giving max(u, v) = m at mid height
 
 test_that("attack zones follow the 67/133/200% boundaries of the batter's zone", {
   z <- attack_zone(zone_px(c(0.66, 0.67, 1.32, 1.33, 1.99, 2, 0)), 2.5, 3.5, 1.5)
   expect_equal(z, c("Heart", "Shadow", "Shadow", "Chase", "Chase", "Waste", "Heart"))
-  expect_equal(attack_zone(0, 3.5, 3.5, 1.5), "Shadow")   # at the top edge: vertical distance counts too
+  expect_equal(attack_zone(0, 3.5, 3.5, 1.5), "Shadow")  # at the top edge: vertical distance counts too
   expect_true(all(is.na(attack_zone(c(0, 0, NA), c(2.5, 2.5, 2.5), c(1.5, NA, 3.5), c(1.5, 1.5, 1.5)))))
 })
 
@@ -56,7 +56,7 @@ test_that("tunnel centroids drop pitch types under 20 pitches", {
 
 test_that("profiles and command rates drop pitch types under 5 pitches", {
   d <- agg_display()
-  d$pitch_type[1] <- "KN"   # a single knuckleball
+  d$pitch_type[1] <- "KN"  # a single knuckleball
   expect_false("KN" %in% pitch_profiles(d)$pitch_type)
   expect_false("KN" %in% command_rates(d)$pitch_type)
   expect_true(all(pitch_profiles(d)$n >= 5))

@@ -1,12 +1,7 @@
-# Every pipeline step, as one entry point:  Rscript run.R <command> [arguments]
-# Run with no command to list them. Each command was a separate script; the usage line
-# above each function says what it takes.
+# Pipeline entry point: Rscript run.R <command> [arguments]
 source("R/load.R")
 
 # Usage: Rscript run.R backfill_statcast <MLB|AAA> <first_season> <last_season>
-# Fetches every missing game day, checks each against the schedule, then compacts
-# each season into one parquet file. Exits non-zero if any day could not be fetched
-# completely (rerun to retry just those days).
 cmd_backfill_statcast <- function(args) {
   if (length(args) != 3) stop("Usage: Rscript scripts/backfill_statcast.R <MLB|AAA> <first_season> <last_season>")
   level <- args[1]
@@ -21,9 +16,6 @@ cmd_backfill_statcast <- function(args) {
 }
 
 # Usage: Rscript run.R backfill_statsapi [schedules] [parks] [stats] [transactions] [current]
-# With no arguments, runs schedules, parks, stats, transactions. Cached past seasons
-# are skipped; the current season and year are always refetched.
-# "current" refetches only the current season's stats and the current year's transactions.
 cmd_backfill_statsapi <- function(args) {
   stages <- args
   if (length(stages) == 0) stages <- c("schedules", "parks", "stats", "transactions")
@@ -75,8 +67,6 @@ cmd_backfill_statsapi <- function(args) {
 }
 
 # Usage: Rscript run.R backfill_weather
-# Builds raw/weather/game_weather_<level>_<season>.parquet for every backfilled
-# schedule (one Open-Meteo request per venue per season). Existing files are skipped.
 cmd_backfill_weather <- function(args) {
   c0 <- cfg()
   parks <- readr::read_csv(file.path(repo_root(), "reference", "parks.csv"), show_col_types = FALSE)
@@ -92,8 +82,6 @@ cmd_backfill_weather <- function(args) {
 }
 
 # Usage: Rscript run.R build_features <MLB|AAA> <first_season> <last_season>
-# Prepared pitches + models/ reference tables -> every model feature, the denoised
-# target, and outcome flags, in processed/features/<level>/<season>.parquet.
 cmd_build_features <- function(args) {
   if (length(args) != 3) stop("Usage: Rscript scripts/build_features.R <MLB|AAA> <first> <last>")
   refs <- read_refs()
@@ -106,10 +94,6 @@ cmd_build_features <- function(args) {
 }
 
 # Usage: Rscript run.R build_grades
-# 1. Anchors from MLB reference seasons (cfg()$seasons_ref) -> models/grade_anchors.csv
-# 2. For every level-season: grades (full season; MLB also odd/even game halves for
-#    split-half reliability) -> grades/<level>/<season>.parquet, and expected component
-#    rates -> components/<level>/<season>.parquet. Triple-A uses the MLB anchors.
 cmd_build_grades <- function(args) {
   FACETS <- c("stuff", "location", "pitching")
   c0 <- cfg()
@@ -136,8 +120,6 @@ cmd_build_grades <- function(args) {
 }
 
 # Usage: Rscript run.R build_outputs <MLB|AAA> <first_season> <last_season>
-# Grades (frozen anchors), components, pitcher index and display files from the stored
-# features + xRV, without re-preparing. Used once to fill past seasons for the app.
 cmd_build_outputs <- function(args) {
   if (length(args) != 3) stop("Usage: Rscript scripts/build_outputs.R <MLB|AAA> <first> <last>")
   anchors <- read_anchors()
@@ -145,10 +127,6 @@ cmd_build_outputs <- function(args) {
 }
 
 # Usage: Rscript run.R build_scorecard dev|final
-# dev:   targets through 2025 only (the 2026 lockbox stays closed while iterating)
-# final: adds the 2026 targets; run once, at the end of the P1 iteration window.
-# Writes scorecard/p1.md and scorecard/p1_stickiness_vs_predictiveness.png
-# (aggregates only — no pitcher rows).
 cmd_build_scorecard <- function(args) {
   if (length(args) != 1 || !args[1] %in% c("dev", "final")) stop("Usage: build_scorecard.R dev|final")
   mode <- args[1]
@@ -158,7 +136,7 @@ cmd_build_scorecard <- function(args) {
   MIN_IP <- 50; MIN_ROS_IP <- 30
   c0 <- cfg()
 
-  # ---- runs, park factors, RA9, Marcel ---------------------------------------------------
+  # Runs, park factors, RA9 and Marcel
   pa_all <- list(); scores_all <- list()
   for (s in c0$seasons_mlb) {
     rp <- load_run_pitches("MLB", s)
@@ -179,7 +157,7 @@ cmd_build_scorecard <- function(args) {
   }))
   ip_tbl <- dplyr::select(ra, pitcher, season, ip)
 
-  # ---- season-level metrics (wide, one row per pitcher-season) ---------------------------
+  # Season-level metrics, one row per pitcher-season
   ours <- dplyr::bind_rows(lapply(2021:2026, function(s) store_read(grades_key("MLB", s)))) %>%
     dplyr::filter(half == "full", pitch_type == "ALL") %>%
     dplyr::select(pitcher, season, facet, grade_global) %>%
@@ -192,11 +170,11 @@ cmd_build_scorecard <- function(args) {
   wide <- ours %>%
     dplyr::inner_join(fg, by = c("pitcher", "season")) %>%
     dplyr::inner_join(dplyr::select(ra, pitcher, season, `RA9 (park-adj)` = ra9_adj), by = c("pitcher", "season"))
-  wide <- wide[stats::complete.cases(wide), ]     # common sample: every metric present
+  wide <- wide[stats::complete.cases(wide), ]  # common sample: every metric present
   METRICS <- setdiff(names(wide), c("pitcher", "season"))
   long <- function(metric) dplyr::transmute(wide, pitcher, season, value = .data[[metric]])
 
-  # ---- stickiness (year y vs y+1) ---------------------------------------------------------
+  # Stickiness, year y vs y+1
   stick <- dplyr::bind_rows(lapply(METRICS, function(m) {
     p <- pair_seasons(long(m), ip_tbl, MIN_IP) %>% dplyr::filter(season + 1L <= last_target)
     bands <- p %>% dplyr::group_by(band) %>% dplyr::summarise(r = wcor(x, y, w), .groups = "drop")
@@ -206,7 +184,7 @@ cmd_build_scorecard <- function(args) {
   }))
   gone <- disappeared_count(long("ERA") %>% dplyr::filter(season < last_target), ip_tbl, MIN_IP)$n
 
-  # ---- split-half (odd vs even games) -----------------------------------------------------
+  # Split-half, odd vs even games
   halves <- dplyr::bind_rows(lapply(2021:last_target, function(s) store_read(grades_key("MLB", s)))) %>%
     dplyr::filter(half != "full", pitch_type == "ALL") %>%
     dplyr::select(pitcher, season, facet, half, grade_global, n) %>%
@@ -217,7 +195,7 @@ cmd_build_scorecard <- function(args) {
                      spearman = wspearman(grade_global_odd, grade_global_even, pmin(n_odd, n_even)), .groups = "drop") %>%
     dplyr::mutate(metric = FACETS[facet]) %>% dplyr::select(metric, n, pearson, spearman)
 
-  # ---- next-season RA9 ---------------------------------------------------------------------
+  # Next-season RA9
   nxt <- wide %>%
     dplyr::inner_join(ip_tbl, by = c("pitcher", "season")) %>%
     dplyr::inner_join(dplyr::transmute(ra, pitcher, season = season - 1L, ra9_next = ra9_adj, ip_next = ip),
@@ -239,7 +217,7 @@ cmd_build_scorecard <- function(args) {
     tibble::tibble(metric = m, `Δ RMSE vs prior RA9` = w1 - b1, `Δ RMSE vs Marcel` = w2 - b2)
   }))
 
-  # ---- rest of season after N pitches -------------------------------------------------------
+  # Rest of season after N pitches
   ros_frames <- list()
   for (s in 2021:last_target) {
     rp <- load_run_pitches("MLB", s)
@@ -292,17 +270,16 @@ cmd_build_scorecard <- function(args) {
     dplyr::bind_rows(c(rows, rows2))
   }))
 
-  # ---- pitch-model rows ----------------------------------------------------------------------
+  # Pitch-model rows
   reports <- file.path(c0$data_dir, "reports")
   model_eval <- readr::read_csv(file.path(reports, "model_eval.csv"), show_col_types = FALSE)
   cal <- readr::read_csv(file.path(reports, "calibration.csv"), show_col_types = FALSE) %>%
     dplyr::filter(n >= 2000) %>% dplyr::group_by(model) %>%
     dplyr::summarise(cells = dplyr::n(), max_abs_error = max(abs(mean_pred - mean_actual)), .groups = "drop")
 
-  # ---- success criteria -----------------------------------------------------------------------
+  # Success criteria
   g <- function(tbl, m, col = "rmse") tbl[[col]][tbl$metric == m]
-  # Prediction criteria are judged at P3, where the Bayesian projection blends grades with
-  # results; P1 grades are scored by models that never saw the pitcher (pure pitch quality).
+  # Prediction criteria are judged by the projection, not the grades alone
   p3 <- function(ok) ifelse(ok, "Judged at P3 (grades alone already ahead)", "Judged at P3 (grades alone behind)")
   crit <- c(
     sapply(NS, function(N) {
@@ -325,7 +302,7 @@ cmd_build_scorecard <- function(args) {
             g(stick, "Stuff (ours)", "pearson"), g(stick, "Stuff+", "pearson"))
   )
 
-  # ---- chart -------------------------------------------------------------------------------------
+  # Chart
   dir.create(file.path(repo_root(), "scorecard"), showWarnings = FALSE)
   chart <- dplyr::inner_join(dplyr::select(stick, metric, stickiness = pearson),
                              dplyr::select(next_rows, metric, predictiveness = pearson), by = "metric") %>%
@@ -341,7 +318,7 @@ cmd_build_scorecard <- function(args) {
   ggplot2::ggsave(file.path(repo_root(), "scorecard", "p1_stickiness_vs_predictiveness.png"), p,
                   width = 16, height = 10, dpi = 100, bg = "white")
 
-  # ---- markdown -------------------------------------------------------------------------------------
+  # Markdown
   md_table <- function(df, digits = 3) {
     df <- as.data.frame(df)
     cells <- lapply(names(df), function(c) {
@@ -383,11 +360,6 @@ cmd_build_scorecard <- function(args) {
 }
 
 # Usage: Rscript run.R build_scorecard_p3
-# P3 scorecard (README 9): the projection, time-forward. For each base season y in
-# 2021-2025 the projection is fit on data through y only and scored on y+1 (next season)
-# or on the rest of season y after 100/250/500 pitches. Same rules as P1: MLB pitchers
-# with 50+ IP in both seasons, weights = the smaller IP, park-adjusted RA9, linear
-# benchmarks cross-validated by pitcher. Writes scorecard/p3.md (aggregates only).
 cmd_build_scorecard_p3 <- function(args) {
   t_start <- Sys.time()
   BASES <- 2021:2025
@@ -419,7 +391,7 @@ cmd_build_scorecard_p3 <- function(args) {
                              n_draws = 500L, seed = y, keep_draws = TRUE)
     h1 <- proj[proj$horizon == 1, ]
     dr <- attr(proj, "draws")
-    if (y + 2L <= 2026L) {   # season 2: the two-year model vs next season stepped forward with aging
+    if (y + 2L <= 2026L) {  # season 2: two-year model vs next season aged forward
       alt <- if (PROJ_H2_METHOD == "step") "model" else "step"
       proj_alt <- project_pitchers(models, i$lines, i$signals, i$parks, i$league, y, map, anchors, curves,
                                    n_draws = 200L, seed = y, h2_method = alt)
@@ -478,14 +450,14 @@ cmd_build_scorecard_p3 <- function(args) {
   cal_f <- step_calibration(st$step_forward, st$era_next_tt - st$era_now <= -0.75)
   cal_b <- step_calibration(st$step_back, st$era_next_tt - st$era_now >= 0.75)
 
-  # Triple-A translation: mostly-Triple-A pitchers who pitched 30+ MLB innings the next season
+  # Triple-A translation: mostly-AAA pitchers with 30+ MLB innings the next season
   aq <- nf[nf$basis == "MLB-equivalent" & nf$ip_next >= 30, ]
   aaa_tbl <- if (nrow(aq)) tibble::tibble(n = nrow(aq), bias = stats::weighted.mean(aq$ra9_next - aq$ours_ra9, aq$ip_next),
                                           rmse = raw_rmse(aq$ra9_next, aq$ours_ra9, aq$ip_next),
                                           league_rmse = raw_rmse(aq$ra9_next, lg$lg_ra9[match(aq$base + 1L, lg$season)], aq$ip_next),
                                           coverage = coverage(aq$era_out_lo, aq$era_out_hi, aq$era_next)) else NULL
 
-  # Rest of season after 100/250/500 pitches: rest-of-season model fit on earlier seasons only
+  # Rest of season after 100/250/500 pitches, model fit on earlier seasons only
   ros_frames <- list()
   for (y in BASES) {
     ip <- trim_inputs(inp, y - 1L)
@@ -522,7 +494,7 @@ cmd_build_scorecard_p3 <- function(args) {
                    marcel_window = cv_rmse(d, ros_ra9 ~ marcel + window_ra9, d$ros_ip)$rmse)
   }))
 
-  # ---- write -------------------------------------------------------------------------
+  # Write
   pf <- function(ok) if (isTRUE(ok)) "PASS" else "FAIL"
   g <- function(t, m, col = "rmse") t[[col]][t$metric == m]
   crit <- c(
@@ -569,8 +541,6 @@ cmd_build_scorecard_p3 <- function(args) {
 }
 
 # Usage: Rscript run.R changed_seasons <before_sha> <after_sha>
-# Prints the seasons whose corrections file changed between two commits, space-separated.
-# A zero "before" sha (first push of a branch) means every corrections file.
 cmd_changed_seasons <- function(args) {
   if (length(args) != 2) stop("Usage: Rscript scripts/changed_seasons.R <before_sha> <after_sha>")
   paths <- if (grepl("^0+$", args[1])) {
@@ -578,11 +548,10 @@ cmd_changed_seasons <- function(args) {
   } else {
     system2("git", c("diff", "--name-only", args[1], args[2]), stdout = TRUE)
   }
-  cat(changed_seasons(paths))
+  writeLines(paste(changed_seasons(paths), collapse = " "))
 }
 
 # Usage: Rscript run.R fetch_fangraphs <first_season> <last_season>
-# Full-season FanGraphs pitching benchmarks -> raw/fangraphs/pitching/<season>.parquet
 cmd_fetch_fangraphs <- function(args) {
   if (length(args) != 2) stop("Usage: Rscript scripts/fetch_fangraphs.R <first> <last>")
   for (s in seq(as.integer(args[1]), as.integer(args[2]))) {
@@ -595,10 +564,6 @@ cmd_fetch_fangraphs <- function(args) {
 }
 
 # Usage: Rscript run.R fetch_inputs <MLB|AAA> <season>
-# Downloads from the private store everything scripts/update_season.R needs for one
-# level-season: Statcast (the daily files for the current season, the compacted season
-# file otherwise), game weather, schedule, Stats API pitching, and the scoring boosters.
-# Needs env PV_DATA_REPO and GH_TOKEN.
 cmd_fetch_inputs <- function(args) {
   if (length(args) != 2) stop("Usage: Rscript scripts/fetch_inputs.R <MLB|AAA> <season>")
   lv <- args[1]; s <- as.integer(args[2])
@@ -617,7 +582,7 @@ cmd_fetch_inputs <- function(args) {
     if (!ok) message("No season weather file for ", lv, " ", s, " yet; daily files only")
   }
   ensure_schedule(lv, s, repo, current)
-  # Season stats feed only the pitcher index (G, GS, IP); a missing file leaves them blank.
+  # Season stats only feed G, GS and IP in the pitcher index
   stats_key <- sprintf("raw/statsapi/pitching/%s/%s.parquet", lv, s)
   if (!store_exists(stats_key))
     tryCatch(release_download_file(stats_key, repo), error = function(e) message("No stored stats for ", lv, " ", s))
@@ -626,10 +591,6 @@ cmd_fetch_inputs <- function(args) {
 }
 
 # Usage: Rscript run.R fit_refs
-# Fits the reference tables on prepared MLB reference seasons (cfg()$seasons_ref) and
-# writes them to models/: arm-angle fill, movement-vs-slot medians, expected approach
-# angle, BIP run value by xwOBA, the league count/platoon mix, and the league mean
-# target by count and platoon.
 cmd_fit_refs <- function(args) {
   cols <- c("pitcher", "season", "level", "pitch_type", "pitch_group", "arm_angle", "rel_z", "rel_x",
             "hb", "ivb", "vaa", "plate_z", "ext", "balls", "strikes", "stand", "p_throws", "in_play",
@@ -662,10 +623,6 @@ cmd_fit_refs <- function(args) {
 }
 
 # Usage: Rscript run.R freeze_projection_anchors
-# Freezes the true talent grade's 20-80 anchors (P3a design): mean and SD of talent RA9
-# among MLB pitchers with 50+ IP in 2023-2025, each season projected from data through
-# that season only. Writes models/projection_anchors.csv. Run once; like the grade
-# anchors, it stays fixed so grades are comparable across seasons.
 cmd_freeze_projection_anchors <- function(args) {
   inp <- projection_inputs(through = 2025L)
   pts <- dplyr::bind_rows(lapply(2023:2025, function(s) {
@@ -680,25 +637,17 @@ cmd_freeze_projection_anchors <- function(args) {
 }
 
 # Usage: Rscript run.R hash_password
-# Prints a bcrypt hash of the admin password to paste into the host's PV_ADMIN_HASH
-# environment variable. The password itself is never stored anywhere.
 cmd_hash_password <- function(args) {
   pw <- if (interactive()) readline("Admin password: ") else {
-    cat("Admin password (input is not hidden in a plain terminal): ")
+    message("Admin password (input is not hidden in a plain terminal): ", appendLF = FALSE)
     system("stty -echo", ignore.stderr = TRUE); on.exit(system("stty echo", ignore.stderr = TRUE))
-    x <- readLines(file("stdin"), n = 1); cat("\n"); x
+    x <- readLines(file("stdin"), n = 1); message(""); x
   }
   if (!nzchar(pw)) stop("Empty password.")
-  cat(bcrypt::hashpw(pw), "\n")
+  writeLines(bcrypt::hashpw(pw))
 }
 
 # Usage: Rscript run.R ingest_daily [YYYY-MM-DD]
-# Nightly ingest for MLB and AAA. "Today" defaults to the current date in
-# America/New_York. Re-checks the last 5 days of Statcast (each day checked against
-# the schedule; existing complete days are skipped) and ingests weather for the day
-# 7 days back, because Open-Meteo's archive runs several days behind.
-# Each level is independent: a failure in one does not skip the other.
-# Exits non-zero if anything failed.
 cmd_ingest_daily <- function(args) {
   today <- if (length(args) >= 1) as.Date(args[1]) else as.Date(format(Sys.time(), tz = "America/New_York", "%Y-%m-%d"))
   parks <- readr::read_csv(file.path(repo_root(), "reference", "parks.csv"), show_col_types = FALSE)
@@ -737,13 +686,7 @@ cmd_ingest_daily <- function(args) {
   if (failed) quit(status = 1)
 }
 
-# One-time migration of the old app's pitch-type corrections.
-# Usage:
-#   Rscript run.R migrate_corrections migrate <old_app_dir>
-#       reads <old_app_dir>/pitch_corrections_<y>.csv and pitch_data_<y>_processed.csv,
-#       writes corrections/pitch_corrections_<y>.csv (+ unmapped rows to data/reports/)
-#   Rscript run.R migrate_corrections verify
-#       checks migrated corrections against backfilled Statcast seasons
+# Usage: Rscript run.R migrate_corrections migrate <old_app_dir> | verify
 cmd_migrate_corrections <- function(args) {
   mode <- args[1]
   seasons <- 2024:2026
@@ -781,14 +724,13 @@ cmd_migrate_corrections <- function(args) {
                                 100 * v$n_found / max(nrow(mapped), 1), 100 * v$match_rate))
       message(y, ": found ", v$n_found, " of ", nrow(mapped), ", match rate ", round(v$match_rate, 3))
     }
-    cat(lines, file = report, sep = "\n", append = TRUE)
+    write(lines, file = report, append = TRUE)
   } else {
     stop("Usage: Rscript scripts/migrate_corrections.R migrate <old_app_dir> | verify")
   }
 }
 
 # Usage: Rscript run.R prepare_pitches <MLB|AAA> <first_season> <last_season>
-# Writes processed/prepared/<level>/<season>.parquet and the fitted park offsets.
 cmd_prepare_pitches <- function(args) {
   if (length(args) != 3) stop("Usage: Rscript scripts/prepare_pitches.R <MLB|AAA> <first> <last>")
   for (s in seq(as.integer(args[2]), as.integer(args[3]))) {
@@ -801,12 +743,6 @@ cmd_prepare_pitches <- function(args) {
 }
 
 # Usage: Rscript run.R project <season> [--no-publish]
-# P3a true-talent projection from the given (latest) season: fits the component models on
-# stored season lines and published outputs, simulates, and writes
-# outputs/projections_<season>.parquet and outputs/luck_<level>_<season>.parquet, then
-# publishes them to the app's outputs release.
-# With PV_DATA_REPO set (CI) it first downloads the Stats API season lines and any
-# published outputs it lacks; locally it uses the store as is.
 cmd_project <- function(args) {
   if (!length(args)) stop("Usage: Rscript scripts/project.R <season> [--no-publish]")
   season <- as.integer(args[1])
@@ -822,11 +758,7 @@ cmd_project <- function(args) {
   message("Projections written for ", season)
 }
 
-# Usage:
-#   Rscript run.R publish season <MLB|AAA> <season>   # outputs (public) + display (private)
-#   Rscript run.R publish scorecard                   # scorecard page files (public)
-# Env: PV_APP_REPO (default harrisonsrubin/pitching-app) and APP_GH_TOKEN (optional; else
-# GH_TOKEN / gh login) for the public outputs; PV_DATA_REPO + GH_TOKEN for the private store.
+# Usage: Rscript run.R publish season <MLB|AAA> <season> | publish scorecard
 cmd_publish <- function(args) {
   app_repo <- Sys.getenv("PV_APP_REPO", unset = "harrisonsrubin/pitching-app")
   app_token <- Sys.getenv("APP_GH_TOKEN", unset = "")
@@ -849,7 +781,6 @@ cmd_publish <- function(args) {
 }
 
 # Usage: Rscript run.R score_pitches <MLB|AAA> <first_season> <last_season>
-# Scores every pitch with the pitcher-held-out fold models -> processed/xrv/<level>/<season>.parquet
 cmd_score_pitches <- function(args) {
   if (length(args) != 3) stop("Usage: Rscript scripts/score_pitches.R <MLB|AAA> <first> <last>")
   refs <- read_refs()
@@ -863,13 +794,7 @@ cmd_score_pitches <- function(args) {
   }
 }
 
-# Sync the local data store with the private data repo's releases
-# (one release per store directory; see release_tag() in R/data.R).
-# Usage:
-#   Rscript run.R sync_store upload <dir>        # every file under a store directory
-#   Rscript run.R sync_store upload-file <key>   # a single file
-#   Rscript run.R sync_store download <dir>      # restore one store directory
-# Needs env PV_DATA_REPO (owner/name) and GH_TOKEN with access to that repo.
+# Usage: Rscript run.R sync_store upload|upload-file|download <path>
 cmd_sync_store <- function(args) {
   repo <- Sys.getenv("PV_DATA_REPO")
   if (!nzchar(repo)) stop("Set PV_DATA_REPO to the private data repo (owner/name).")
@@ -877,7 +802,7 @@ cmd_sync_store <- function(args) {
   path <- args[2]
 
   if (identical(args[1], "upload")) {
-    keys <- release_upload_dir(path, repo)   # skips files already uploaded at the same size
+    keys <- release_upload_dir(path, repo)  # skips files already uploaded at the same size
     message("Synced ", length(keys), " file(s) under ", path)
   } else if (identical(args[1], "upload-file")) {
     if (!store_exists(path)) stop("No such file in the store: ", path)
@@ -891,11 +816,7 @@ cmd_sync_store <- function(args) {
   }
 }
 
-# Usage:
-#   Rscript run.R train_models forward            # train MLB 2023-2025, test 2026; ablations
-#   Rscript run.R train_models oof [names...]     # 5 pitcher-held-out folds (default: all 8)
-# Boosters go to <data_dir>/models/lgb/<name>/. Forward results go to
-# data/reports/model_eval.csv and data/reports/calibration.csv.
+# Usage: Rscript run.R train_models forward | oof [names...]
 cmd_train_models <- function(args) {
   if (length(args) < 1 || !args[1] %in% c("forward", "oof")) stop("Usage: train_models.R forward|oof [names...]")
   reports <- file.path(cfg()$data_dir, "reports")
@@ -917,10 +838,6 @@ cmd_train_models <- function(args) {
 }
 
 # Usage: Rscript run.R update_season <MLB|AAA> <season>
-# Rebuilds one level-season end to end (P2 design 6-7): compact Statcast (current season)
-# -> season weather -> prepare -> features -> score with the saved fold boosters ->
-# grades on the frozen anchors -> components -> pitcher index -> display files.
-# Run scripts/fetch_inputs.R first in CI. Exits non-zero on any failure.
 cmd_update_season <- function(args) {
   if (length(args) != 2) stop("Usage: Rscript scripts/update_season.R <MLB|AAA> <season>")
   lv <- args[1]; s <- as.integer(args[2])
@@ -947,8 +864,6 @@ cmd_update_season <- function(args) {
 }
 
 # Usage: Rscript run.R validate_data
-# Validates every compacted Statcast season and writes data/reports/data_report.md
-# (aggregate numbers only, no pitch rows).
 cmd_validate_data <- function(args) {
   c0 <- cfg()
   levels_seasons <- list(MLB = c0$seasons_mlb, AAA = c0$seasons_aaa)
@@ -977,11 +892,13 @@ cmd_validate_data <- function(args) {
   }
 }
 
+# Commands main() can dispatch to
 COMMANDS <- c("backfill_statcast", "backfill_statsapi", "backfill_weather", "build_features", "build_grades", "build_outputs", "build_scorecard", "build_scorecard_p3", "changed_seasons", "fetch_fangraphs", "fetch_inputs", "fit_refs", "freeze_projection_anchors", "hash_password", "ingest_daily", "migrate_corrections", "prepare_pitches", "project", "publish", "score_pitches", "sync_store", "train_models", "update_season", "validate_data")
 
+# Run the named command, or list commands
 main <- function(argv = commandArgs(trailingOnly = TRUE)) {
   if (!length(argv) || !argv[1] %in% COMMANDS) {
-    cat("Usage: Rscript run.R <command> [arguments]\nCommands:", paste(COMMANDS, collapse = ", "), "\n")
+    message("Usage: Rscript run.R <command> [arguments]\nCommands: ", paste(COMMANDS, collapse = ", "))
     if (length(argv)) quit(status = 1) else return(invisible())
   }
   get(paste0("cmd_", argv[1]))(argv[-1])

@@ -17,13 +17,13 @@ test_that("a correction that changes the primary fastball changes the differenti
   d <- dplyr::bind_rows(fx(), tibble::tibble(pitcher = 1L, season = 2030L, level = "MLB",
          pitch_uid = c("9-1-1", "9-1-2", "9-1-3"), pitch_type = "SNK", pitch_group = "FB",
          velo = 92, hb = 15, ivb = 8, spin_axis_m = 230))
-  before <- add_fastball_diffs(d, primary_fastball(d))           # SNK primary (3 vs 2)
-  expect_equal(before$d_velo[3], -7)                              # SL vs 92 SNK
+  before <- add_fastball_diffs(d, primary_fastball(d))  # SNK primary (3 vs 2)
+  expect_equal(before$d_velo[3], -7)  # SL vs 92 SNK
   corr <- tibble::tibble(pitch_uid = c("9-1-1", "9-1-2", "9-1-3"), new_pitch_type = "CH")
   d2 <- apply_corrections(d, corr)
   d2$pitch_group <- pitch_group(d2$pitch_type)
-  after <- add_fastball_diffs(d2, primary_fastball(d2))          # now 4S primary
-  expect_equal(after$d_velo[3], -10)                              # SL vs 95 4S
+  after <- add_fastball_diffs(d2, primary_fastball(d2))  # now 4S primary
+  expect_equal(after$d_velo[3], -10)  # SL vs 95 4S
 })
 
 test_that("perceived velo equals velo at 6 ft extension, higher with more", {
@@ -43,7 +43,7 @@ test_that("slot reference falls back to the pitch type median for thin bins", {
   d <- tibble::tibble(pitch_type = "4S", arm_angle = c(rep(42, 300), 12), hb = c(rep(8, 300), 20), ivb = 15)
   ref <- fit_slot_ref(d)
   out <- apply_slot_ref(tibble::tibble(pitch_type = "4S", arm_angle = c(43, 12), hb = c(9, 20), ivb = 15), ref)
-  expect_equal(out$hb_vs_slot, c(1, 12))   # thin 10-15 bin uses the 4S median (8)
+  expect_equal(out$hb_vs_slot, c(1, 12))  # thin 10-15 bin uses the 4S median (8)
 })
 
 test_that("arm angle imputation: pitcher median first, then release-point model", {

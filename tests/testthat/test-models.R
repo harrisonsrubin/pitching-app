@@ -22,7 +22,7 @@ test_that("each pitch is scored by the model that never saw its pitcher", {
 
 test_that("stuff is averaged over the count mix", {
   mix <- tibble::tibble(balls = c(0L, 3L), strikes = c(0L, 2L), same_side = 0L, share = c(0.75, 0.25))
-  f <- function(X) X[, "balls"]               # prediction = balls
+  f <- function(X) X[, "balls"]  # prediction = balls
   expect_equal(neutral_count_predict(tibble::tibble(balls = 1L, strikes = 1L, same_side = 1L), f, mix), 0.75)
 })
 

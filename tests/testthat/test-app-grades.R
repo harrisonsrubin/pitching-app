@@ -6,13 +6,13 @@ test_that("traded pitcher appears under both teams", {
   expect_true(102L %in% pitchers_for(o$pitchers, "MLB", 2026L, "NYY")$pitcher)
   expect_false(101L %in% pitchers_for(o$pitchers, "MLB", 2026L, "NYY")$pitcher)
   expect_setequal(team_choices(o$pitchers, "MLB", 2026L), c("DET", "NYY", "SEA"))
-  expect_equal(pitchers_for(o$pitchers, "MLB", 2026L, "All")$pitcher, c(101L, 103L, 102L))   # by pitches
+  expect_equal(pitchers_for(o$pitchers, "MLB", 2026L, "All")$pitcher, c(101L, 103L, 102L))  # by pitches
 })
 
 test_that("grades_table has one row per type plus ALL, sorted by usage", {
   o <- fx()
   d <- fixture_display(); d <- d[d$pitcher == 103, ]
-  d$pitch_type[1:30] <- "CB"   # CB most used
+  d$pitch_type[1:30] <- "CB"  # CB most used
   t <- grades_table(o$grades, o$components, 103L, "MLB", 2026L, pitch_summary(d, "All"), "global")
   expect_equal(t$pitch_type, c("CB", "4S", "CH", "ALL"))
   expect_equal(t$usage[1], mean(d$pitch_type == "CB"))
@@ -28,7 +28,7 @@ test_that("type scale shifts the range with the grade", {
   expect_equal(t$stuff_value[t$pitch_type == "4S"], r$grade_type)
   g <- grades_table(o$grades, o$components, 101L, "MLB", 2026L, NULL, "global")
   expect_equal(g$stuff_value[g$pitch_type == "4S"], r$grade_global)
-  expect_false(is.na(t$stuff_value[t$pitch_type == "ALL"]))   # overall row always uses the pitcher scale
+  expect_false(is.na(t$stuff_value[t$pitch_type == "ALL"]))  # overall row always uses the pitcher scale
 })
 
 test_that("NA grades and NaN components render as blank, not NaN", {

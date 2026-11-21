@@ -1,12 +1,9 @@
-# Shared app constants (pitch labels and colors, grade colors) and the theme.
+# Shared constants and theme for the app
 
-# ==== constants ===========================================================================
+# Constants
+`%>%` <- magrittr::`%>%`  # app is deployed alone, so define the pipe here
 
-`%>%` <- magrittr::`%>%`   # app/R is loaded on its own on the host, without R/load.R
-
-# Shared app constants. PITCH_LABELS must match reference/pitch_type_map.csv (a test
-# checks it); the app is deployed on its own, so it keeps its own copy.
-
+# Must match reference/pitch_type_map.csv (a test checks it)
 PITCH_LABELS <- c("4S", "SNK", "CUT", "SL", "SW", "CB", "CS", "SV", "CH", "SP", "FK", "KN")
 
 PITCH_COLORS <- c(
@@ -14,18 +11,20 @@ PITCH_COLORS <- c(
   "CB" = "#FFD700", "CS" = "#B8860B", "SV" = "#964B00", "CH" = "#FF8C00", "SP" = "#FF69B4",
   "FK" = "#FA8072", "KN" = "#A9A9A9")
 
+# Grade color steps, best to worst
 GRADE_BINS <- c(70, 60, 55, 45, 40, 30)
 GRADE_COLORS <- c("#1a7f37", "#8fd19e", "#e6f4c3", "#fff7cc", "#fdd49e", "#f4a582", "#c0392b")
 
+# Map grades to their fill colors
 grade_color <- function(x) {
   i <- vapply(x, function(v) if (is.na(v)) NA_integer_ else which(c(v >= GRADE_BINS, TRUE))[1], 1L)
   GRADE_COLORS[i]
 }
 
-# The scale runs 20-80; nothing outside it is ever shown.
+# Keep grades on the 20-80 scale
 clamp_grade <- function(x) pmin(pmax(x, 20), 80)
 
-# Plotly colorscale for a 20-80 range that steps at GRADE_BINS with GRADE_COLORS.
+# Stepped plotly colorscale matching the grade colors
 grade_colorscale <- function() {
   breaks <- c(20, rev(GRADE_BINS), 80)
   cols <- rev(GRADE_COLORS)
@@ -38,16 +37,12 @@ PLATE_HALF_WIDTH <- 0.83
 LEVELS <- c("MLB", "AAA")
 LEVEL_LABELS <- c(MLB = "MLB", AAA = "Triple-A")
 
-# ==== theme ===============================================================================
-
-# Look and feel. A scouting card rather than a dashboard: a condensed sports face for
-# names, page titles and grade numbers; a clean sans with even-width digits for tables
-# and controls. Fonts load from Google Fonts in the browser (nothing to install).
-
+# Theme
 INK <- "#16213a"; SLATE <- "#4a5568"; PAPER <- "#f6f8fb"; LINE <- "#d8dee8"; FIELD <- "#1f6f4a"
 DISPLAY_FONT <- "Barlow Condensed"
 BODY_FONT <- "IBM Plex Sans"
 
+# Bootstrap theme with Google fonts and the app CSS
 app_theme <- function() {
   bslib::bs_theme(
     version = 5, bg = PAPER, fg = INK, primary = FIELD, secondary = SLATE,
@@ -57,6 +52,7 @@ app_theme <- function() {
   ) %>% bslib::bs_add_rules(APP_CSS)
 }
 
+# Page CSS, colors and fonts filled in by sprintf
 APP_CSS <- sprintf("
 body { font-variant-numeric: tabular-nums; }
 .navbar { background: %1$s !important; border-bottom: 3px solid %2$s; }
@@ -137,8 +133,7 @@ table.dataTable tbody tr:last-child td { border-top: 2px solid %4$s; }
 .alert { border-radius: 6px; }
 ", INK, FIELD, DISPLAY_FONT, LINE, SLATE, PAPER)
 
-# Plot styling shared by plotly and ggplot (fonts fall back to the system sans when the
-# web fonts are not installed for server-side rendering).
+# Shared plotly styling
 plotly_style <- function(p) {
   plotly::layout(p, font = list(family = paste0(BODY_FONT, ", Helvetica, Arial, sans-serif"), color = INK, size = 13),
                  paper_bgcolor = "#ffffff", plot_bgcolor = "#ffffff",
@@ -147,6 +142,7 @@ plotly_style <- function(p) {
                  margin = list(t = 20, r = 20, b = 20, l = 60))
 }
 
+# Shared ggplot theme
 theme_pv <- function() {
   ggplot2::theme_minimal(base_size = 13) +
     ggplot2::theme(text = ggplot2::element_text(color = INK),
@@ -157,6 +153,7 @@ theme_pv <- function() {
                    plot.background = ggplot2::element_rect(fill = "#ffffff", color = NA))
 }
 
-# Text on the two darkest grade colors is white so it stays readable.
+# White text on the darkest grade colors
 grade_text_color <- function() DT::styleInterval(c(39.999999, 69.999999), c("#ffffff", INK, "#ffffff"))
+# DT cell fill by grade
 grade_fill <- function() DT::styleInterval(rev(GRADE_BINS) - 1e-9, rev(GRADE_COLORS))

@@ -1,5 +1,4 @@
-# App tests: source app/R/*.R (Shiny auto-loads them in the real app) and build a tiny
-# local data dir the app can read in local mode (PV_APP_LOCAL=1).
+# Source the app code and build a tiny local data dir for PV_APP_LOCAL=1
 
 source_app <- function() {
   for (f in sort(list.files(file.path(repo_root(), "app", "R"), pattern = "\\.R$", full.names = TRUE)))
@@ -7,8 +6,7 @@ source_app <- function() {
   invisible(TRUE)
 }
 
-# Horizontal values follow Statcast's catcher's view: a righty's release side and
-# fastball run are negative.
+# Catcher's view: a righty's release side and fastball run are negative
 fixture_display <- function() {
   set.seed(7)
   mk <- function(pitcher, types, n, throws, date) {

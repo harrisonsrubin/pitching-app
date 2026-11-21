@@ -34,7 +34,7 @@ test_that("pitcher without stats row keeps NA stats", {
   out <- pitcher_index(idx_pitches(), stats, people, level = "MLB", season = 2026L)
   b <- out[out$pitcher == 2L, ]
   expect_true(is.na(b$ip_outs)); expect_true(is.na(b$name))
-  expect_equal(b$throws, "R")    # falls back to Statcast's p_throws
+  expect_equal(b$throws, "R")  # falls back to Statcast's p_throws
   expect_equal(b$team_abbrev, "TEX")
   expect_named(out, c("level", "season", "pitcher", "name", "throws", "team_abbrev", "teams",
                       "pitches", "g", "gs", "ip_outs", "age"))

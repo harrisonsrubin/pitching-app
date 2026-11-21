@@ -30,32 +30,32 @@ jobs:
       - name: Tests
         run: Rscript tests/testthat.R
       - name: Ingest yesterday
-        run: Rscript scripts/ingest_daily.R
+        run: Rscript run.R ingest_daily
       - name: Upload new files
         run: |
-          Rscript scripts/sync_store.R upload raw/statcast/MLB/$(date -u +%Y)
-          Rscript scripts/sync_store.R upload raw/statcast/AAA/$(date -u +%Y)
-          Rscript scripts/sync_store.R upload raw/weather/daily/MLB
-          Rscript scripts/sync_store.R upload raw/weather/daily/AAA
+          Rscript run.R sync_store upload raw/statcast/MLB/$(date -u +%Y)
+          Rscript run.R sync_store upload raw/statcast/AAA/$(date -u +%Y)
+          Rscript run.R sync_store upload raw/weather/daily/MLB
+          Rscript run.R sync_store upload raw/weather/daily/AAA
       - name: Refresh Stats API data (schedule, season stats)
         run: |
-          Rscript scripts/backfill_statsapi.R current
-          Rscript scripts/sync_store.R upload raw/statsapi
+          Rscript run.R backfill_statsapi current
+          Rscript run.R sync_store upload raw/statsapi
       - name: Rebuild and publish the current season
         run: |
           SEASON=$(Rscript -e 'source("R/load.R"); cat(last_season())')
           for LV in MLB AAA; do
-            Rscript scripts/fetch_inputs.R $LV $SEASON
-            Rscript scripts/update_season.R $LV $SEASON
+            Rscript run.R fetch_inputs $LV $SEASON
+            Rscript run.R update_season $LV $SEASON
             # A tag saved during the rebuild: rebuild again with it, so this run never
             # publishes older corrections over a newer rescore.
             for TRY in 1 2; do
               git fetch -q origin main
               if git diff --quiet HEAD origin/main -- corrections/; then break; fi
               git checkout -q origin/main -- corrections/ && git reset -q --soft origin/main
-              Rscript scripts/update_season.R $LV $SEASON
+              Rscript run.R update_season $LV $SEASON
             done
-            Rscript scripts/publish.R season $LV $SEASON
+            Rscript run.R publish season $LV $SEASON
           done
       - name: Projections
-        run: Rscript scripts/project.R $(Rscript -e 'source("R/load.R"); cat(last_season())')
+        run: Rscript run.R project $(Rscript -e 'source("R/load.R"); cat(last_season())')

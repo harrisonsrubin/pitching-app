@@ -2917,58 +2917,25 @@
   },
   "files": {
     "app.R": {
-      "checksum": "acf48944484998819f594c7458ca3064"
+      "checksum": "ad333a2ce9bb917ed93b0705edbc540e"
     },
-    "R/admin.R": {
-      "checksum": "ed83e8d4a3060c825114b0c7bfb2edfc"
-    },
-    "R/constants.R": {
-      "checksum": "635b1a518a37768288fc76073ea41e1c"
+    "R/base.R": {
+      "checksum": "f28bc1a128f4ffdcf98285f93a6cb5c5"
     },
     "R/data.R": {
-      "checksum": "6ffb2966f4605bed9d7b1ed4173e17b2"
+      "checksum": "068fe38bbc9086dd6750814d77953935"
     },
-    "R/github_corrections.R": {
-      "checksum": "4423d84895e786a9aabf206613d7eb3d"
+    "R/editor.R": {
+      "checksum": "ec589dc6ee5c80daea53c23e35f61319"
     },
-    "R/mod_command.R": {
-      "checksum": "3997d54f3154e43ff8389c05c1993d79"
+    "R/pages.R": {
+      "checksum": "c540c8bcd2ac362a4750e5fd193c91db"
     },
-    "R/mod_editor.R": {
-      "checksum": "126e99f8cbab2fdfb3a550e0ff007dd9"
+    "R/projection.R": {
+      "checksum": "3966d937c86273d4819de4909958aa72"
     },
-    "R/mod_grades.R": {
-      "checksum": "1fdcf3de6ab05007d573cb3ea0a515d3"
-    },
-    "R/mod_leaderboard.R": {
-      "checksum": "3c30e2fcb1bbc5880db069e3d035a01e"
-    },
-    "R/mod_location.R": {
-      "checksum": "fc5d0702c7eddc4fd7120b7da43447c0"
-    },
-    "R/mod_movement.R": {
-      "checksum": "8c66fb36979490ac161932ba67f7e2ca"
-    },
-    "R/mod_projection.R": {
-      "checksum": "7312207d44b9acfdc87fadeb9211bc37"
-    },
-    "R/mod_rolling.R": {
-      "checksum": "71b8f13dfbfdd1a30a24bad9342a5973"
-    },
-    "R/mod_scorecard.R": {
-      "checksum": "8228ded2b9103bc276b855bee6e6a4e3"
-    },
-    "R/mod_sidebar.R": {
-      "checksum": "8e2dd066a5cbed472990e714e577ac03"
-    },
-    "R/mod_stuffmap.R": {
-      "checksum": "90eec781b4941f5f2e9a932bf02c8020"
-    },
-    "R/pitch_summary.R": {
-      "checksum": "235c184c19bce653831f264af949c245"
-    },
-    "R/theme.R": {
-      "checksum": "19ed95f40eb896e6122703abf6cdc4b9"
+    "R/sidebar.R": {
+      "checksum": "b0aafb97ee894a5ffd9c9bccfb341fe3"
     }
   },
   "users": null

@@ -1,3 +1,7 @@
+# Sidebar selection shared by every page.
+
+# ==== sidebar =========================================================================
+
 # Sidebar: level, season, team, pitcher, batter side, min pitches, grade scale. Returns
 # sel$state() (the current selection) and sel$select() (jump to a pitcher, used by the
 # Leaderboard). A traded pitcher is listed under every team he pitched for.

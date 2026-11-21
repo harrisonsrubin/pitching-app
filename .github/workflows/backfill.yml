@@ -33,8 +33,8 @@ jobs:
       - name: Backfill, compact, and upload one season at a time
         run: |
           for s in $(seq ${{ inputs.start }} ${{ inputs.end }}); do
-            Rscript scripts/sync_store.R download raw/statcast/${{ inputs.level }}/$s || true
-            Rscript scripts/backfill_statcast.R ${{ inputs.level }} $s $s
-            Rscript scripts/sync_store.R upload raw/statcast/${{ inputs.level }}/$s
-            Rscript scripts/sync_store.R upload-file raw/statcast/${{ inputs.level }}/$s.parquet
+            Rscript run.R sync_store download raw/statcast/${{ inputs.level }}/$s || true
+            Rscript run.R backfill_statcast ${{ inputs.level }} $s $s
+            Rscript run.R sync_store upload raw/statcast/${{ inputs.level }}/$s
+            Rscript run.R sync_store upload-file raw/statcast/${{ inputs.level }}/$s.parquet
           done

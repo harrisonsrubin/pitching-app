@@ -61,7 +61,7 @@ test_that("display publishing refuses a public or app repo", {
   expect_error(assert_private_repo("Me/Pitching-App", "me/pitching-app"), "app repo")
   local_global_binding(gh_output = function(args) "true")
   expect_silent(assert_private_repo("me/pitching-data", "me/pitching-app"))
-  expect_match(paste(readLines(file.path(repo_root(), "scripts", "publish.R")), collapse = "\n"), "assert_private_repo")
+  expect_match(paste(readLines(file.path(repo_root(), "run.R")), collapse = "\n"), "assert_private_repo")
 })
 
 test_that("outputs include the P2b aggregates and the grade anchors, still nothing pitch-level", {

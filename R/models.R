@@ -1,3 +1,7 @@
+# LightGBM pitch models: training and scoring.
+
+# ==== models ==============================================================================
+
 # LightGBM pitch models (README 7.1–7.5). Every pitch is scored by a model that never
 # saw its pitcher: pitchers are split into 5 folds by ID, each fold's model is trained
 # on the other four. Training uses MLB 2023–2026 with recency weights; everything else

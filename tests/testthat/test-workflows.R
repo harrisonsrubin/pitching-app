@@ -5,16 +5,21 @@ test_that("expected workflows exist", {
                   c("backfill.yml", "nightly.yml", "weekly.yml", "rescore.yml", "deploy.yml"))
 })
 
-test_that("workflows parse and every referenced script exists", {
+run_commands <- function() {
+  code <- readLines(file.path(repo_root(), "run.R"))
+  sub("^cmd_([a-z_]+) <- function.*", "\\1", grep("^cmd_[a-z_]+ <- function", code, value = TRUE))
+}
+
+test_that("workflows parse and every run.R command they call exists", {
   for (f in setdiff(list.files(wf_dir(), full.names = TRUE), file.path(wf_dir(), "deploy.yml"))) {
     y <- yaml::read_yaml(f)
     trig <- y[["on"]] %||% y[["TRUE"]]
     expect_false(is.null(trig), info = f)
     expect_false(is.null(y$jobs), info = f)
     runs <- unlist(lapply(y$jobs, function(j) vapply(j$steps, function(s) s$run %||% "", "")))
-    scripts <- unlist(regmatches(runs, gregexpr("scripts/[a-z_]+\\.R", runs)))
-    expect_true(length(scripts) > 0, info = f)
-    expect_true(all(file.exists(file.path(repo_root(), scripts))), info = f)
+    cmds <- sub("run.R ", "", unlist(regmatches(runs, gregexpr("run.R [a-z_]+", runs))), fixed = TRUE)
+    expect_true(length(cmds) > 0, info = f)
+    expect_true(all(cmds %in% run_commands()), info = paste(f, paste(setdiff(cmds, run_commands()), collapse = ",")))
     expect_true(any(grepl("tests/testthat.R", runs, fixed = TRUE)), info = f)
   }
 })
@@ -29,14 +34,14 @@ test_that("backfill is manual-only with level/start/end inputs", {
 test_that("backfill uploads each season inside the same loop that fetches it", {
   y <- yaml::read_yaml(file.path(wf_dir(), "backfill.yml"))
   runs <- vapply(y$jobs$backfill$steps, function(s) s$run %||% "", "")
-  both <- grepl("backfill_statcast.R", runs, fixed = TRUE) & grepl("sync_store.R upload", runs, fixed = TRUE)
+  both <- grepl("run.R backfill_statcast", runs, fixed = TRUE) & grepl("run.R sync_store upload", runs, fixed = TRUE)
   expect_true(any(both))
 })
 
 test_that("weekly refreshes only the current season", {
   y <- yaml::read_yaml(file.path(wf_dir(), "weekly.yml"))
   runs <- paste(vapply(y$jobs$refresh$steps, function(s) s$run %||% "", ""), collapse = "\n")
-  expect_match(runs, "backfill_statsapi.R current", fixed = TRUE)
+  expect_match(runs, "run.R backfill_statsapi current", fixed = TRUE)
 })
 
 wf <- function(name) yaml::read_yaml(file.path(wf_dir(), name))
@@ -63,7 +68,7 @@ test_that("rescore runs on corrections pushes to main and queues instead of over
   expect_true("seasons" %in% names(t$workflow_dispatch$inputs))
   expect_false(isTRUE(y$concurrency[["cancel-in-progress"]]))
   r <- wf_runs(y)
-  for (s in c("changed_seasons.R", "fetch_inputs.R", "update_season.R", "publish.R season")) expect_match(r, s, fixed = TRUE)
+  for (s in c("run.R changed_seasons", "run.R fetch_inputs", "run.R update_season", "run.R publish season")) expect_match(r, s, fixed = TRUE)
   expect_match(r, "--status success", fixed = TRUE)   # diff from the last successful rescore
 })
 
@@ -80,7 +85,7 @@ test_that("deploy only fires on app changes and fast-forwards the deploy branch"
 test_that("nightly rebuilds and publishes the current season for both levels", {
   y <- wf("nightly.yml")
   r <- wf_runs(y)
-  for (s in c("fetch_inputs.R", "update_season.R", "publish.R season", "last_season()")) expect_match(r, s, fixed = TRUE)
+  for (s in c("run.R fetch_inputs", "run.R update_season", "run.R publish season", "last_season()")) expect_match(r, s, fixed = TRUE)
   expect_equal(y$permissions$contents, "write")
 })
 
@@ -96,7 +101,7 @@ test_that("nightly re-checks corrections before publishing and has time for two 
   y <- wf("nightly.yml")
   r <- wf_runs(y)
   expect_match(r, "git diff --quiet HEAD origin/main -- corrections/", fixed = TRUE)
-  expect_lt(regexpr("git diff --quiet", r, fixed = TRUE), regexpr("publish.R season", r, fixed = TRUE))
+  expect_lt(regexpr("git diff --quiet", r, fixed = TRUE), regexpr("run.R publish season", r, fixed = TRUE))
   expect_gte(y$jobs$ingest$`timeout-minutes`, 120)
 })
 
@@ -113,7 +118,7 @@ test_that("rescore takes the manual seasons input through env and validates it; 
   y <- wf("rescore.yml")
   r <- wf_runs(y)
   expect_false(grepl("${{ github.event.inputs.seasons }}", r, fixed = TRUE))   # never pasted into the shell
-  step <- Filter(function(s) grepl("changed_seasons.R", s$run %||% ""), y$jobs$rescore$steps)[[1]]
+  step <- Filter(function(s) grepl("run.R changed_seasons", s$run %||% ""), y$jobs$rescore$steps)[[1]]
   expect_equal(step$env$SEASONS_INPUT, "${{ github.event.inputs.seasons }}")
   expect_match(r, "=~ ^[0-9]{4}(\\ [0-9]{4})*$", fixed = TRUE)   # whole-string bash match, not grep
   expect_match(r, "--branch main", fixed = TRUE)
@@ -127,7 +132,7 @@ test_that("deploy runs queue instead of racing", {
 
 test_that("the rescore seasons check rejects multi-line and malformed input", {
   y <- wf("rescore.yml")
-  run <- Filter(function(s) grepl("changed_seasons.R", s$run %||% ""), y$jobs$rescore$steps)[[1]]$run
+  run <- Filter(function(s) grepl("run.R changed_seasons", s$run %||% ""), y$jobs$rescore$steps)[[1]]$run
   lines <- strsplit(run, "\n")[[1]]
   start <- grep("SEASONS_INPUT", lines)[2]   # the validation block after the -n test
   check <- paste(lines[start:(start + 2)], collapse = "\n")
@@ -158,8 +163,16 @@ test_that("nightly, weekly and rescore run the projections, with the app repo to
   for (f in c("nightly.yml", "weekly.yml", "rescore.yml")) {
     y <- yaml::read_yaml(file.path(wf_dir(), f))
     runs <- unlist(lapply(y$jobs, function(j) vapply(j$steps, function(s) s$run %||% "", "")))
-    expect_true(any(grepl("scripts/project.R", runs, fixed = TRUE)), info = f)
+    expect_true(any(grepl("run.R project", runs, fixed = TRUE)), info = f)
     env <- unlist(lapply(y$jobs, function(j) names(j$env)))
     expect_true(all(c("PV_APP_REPO", "APP_GH_TOKEN", "PV_DATA_REPO") %in% env), info = f)
   }
+})
+
+test_that("run.R lists its commands and runs one in a clean process", {
+  withr::local_dir(repo_root())
+  out <- system2(file.path(R.home("bin"), "Rscript"), "run.R", stdout = TRUE, stderr = TRUE)
+  expect_true(any(grepl("Commands:.*project", out)), info = paste(out, collapse = "\n"))
+  out2 <- system2(file.path(R.home("bin"), "Rscript"), c("run.R", "changed_seasons", "HEAD", "HEAD"), stdout = TRUE, stderr = TRUE)
+  expect_false(any(grepl("Error", out2)), info = paste(out2, collapse = "\n"))
 })

@@ -1,3 +1,7 @@
+# App data: config, public outputs, private pitch data per pitcher (cached).
+
+# ==== data ================================================================================
+
 # Where the app's data comes from (P2 design 4.3).
 # Public outputs (grades, components, pitcher index, references, scorecard) load once at
 # startup from the app repo's "outputs" release. Pitch-level display data is private:
@@ -120,7 +124,7 @@ load_outputs <- function(cfg) {
        scorecard = list(md = file.path(dir, "scorecard.md"), chart = file.path(dir, "scorecard_chart.png")))
 }
 
-N_DISPLAY_BUCKETS <- 32L   # must equal the pipeline's N_BUCKETS (R/display.R); a test checks
+N_DISPLAY_BUCKETS <- 32L   # must equal the pipeline's N_BUCKETS (R/grades.R); a test checks
 display_bucket <- function(pitcher) as.integer(pitcher %% N_DISPLAY_BUCKETS)
 
 # One cache for the whole R process (buckets are the same for every visitor), keeping

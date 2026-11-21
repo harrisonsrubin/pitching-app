@@ -31,8 +31,8 @@ jobs:
       - name: Tests
         run: Rscript tests/testthat.R
       - name: Refresh Stats API data
-        run: Rscript scripts/backfill_statsapi.R current
+        run: Rscript run.R backfill_statsapi current
       - name: Upload
-        run: Rscript scripts/sync_store.R upload raw/statsapi
+        run: Rscript run.R sync_store upload raw/statsapi
       - name: Projections
-        run: Rscript scripts/project.R $(Rscript -e 'source("R/load.R"); cat(last_season())')
+        run: Rscript run.R project $(Rscript -e 'source("R/load.R"); cat(last_season())')

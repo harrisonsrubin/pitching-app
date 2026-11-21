@@ -23,7 +23,7 @@ store_exists <- function(key) file.exists(store_path(key))
 store_list <- function(prefix) {
   base <- store_path(prefix)
   if (!dir.exists(base)) return(character())
-  files <- list.files(base, pattern = "\\.parquet$", recursive = TRUE)
+  files <- list.files(base, pattern = "\\.(parquet|txt)$", recursive = TRUE)   # data + LightGBM boosters
   sort(file.path(prefix, files))
 }
 

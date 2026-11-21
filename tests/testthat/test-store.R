@@ -135,3 +135,11 @@ test_that("release_upload_dir pauses after each batch to stay under GitHub's upl
   release_upload_dir("display/MLB/2026", repo = "o/d", batch = 2, force = TRUE, seconds_per_file = 1.5)
   expect_equal(waits, c(3, 3, 1.5))
 })
+
+test_that("store listing includes the pitch-model booster files, so they get synced", {
+  withr::local_envvar(PV_DATA_DIR = withr::local_tempdir())
+  dir.create(store_path("models/lgb/stuff"), recursive = TRUE)
+  writeLines("tree", store_path("models/lgb/stuff/fold1.txt"))
+  writeLines("junk", store_path("models/lgb/stuff/.DS_Store"))
+  expect_equal(store_list("models/lgb"), "models/lgb/stuff/fold1.txt")
+})

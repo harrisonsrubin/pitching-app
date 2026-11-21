@@ -40,14 +40,31 @@ body { font-variant-numeric: tabular-nums; }
 .pv-grade { min-width: 92px; text-align: center; padding: 8px 10px 6px; border-radius: 6px; border: 1px solid rgba(22,33,58,.08); }
 .pv-grade .pv-num { font-family: '%3$s', sans-serif; font-weight: 700; font-size: 2.6rem; line-height: 1; color: %1$s; }
 .pv-grade .pv-range { font-size: .75rem; color: %1$s; opacity: .75; }
-.pv-proj { flex-basis: 100%%; border-top: 1px solid %4$s; padding-top: 12px; margin-top: 2px; }
-.pv-proj-head { font-family: '%3$s', sans-serif; font-weight: 600; font-size: 1.15rem; color: %1$s; }
-.pv-basis { margin-left: 10px; font-family: inherit; font-size: .75rem; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: %6$s; color: %5$s; }
-.pv-bet { position: relative; height: 62px; margin: 6px 4px 4px; max-width: 560px; }
-.pv-bet-axis { position: absolute; left: 0; right: 0; bottom: 0; height: 18px; border-top: 1px solid %4$s; }
-.pv-bet-tick { position: absolute; top: 2px; transform: translateX(-50%%); font-size: .7rem; color: %5$s; }
-.pv-chip { position: absolute; width: 11px; height: 11px; margin-left: -5px; margin-bottom: 14px; border-radius: 50%%; border: 1px solid rgba(22,33,58,.35); }
-.pv-proj-line { font-size: .92rem; color: %1$s; margin-top: 3px; }
+.pv-proj { flex-basis: 100%%; border-top: 1px solid %4$s; padding-top: 14px; margin-top: 4px; }
+.pv-proj-title { font-family: '%3$s', sans-serif; font-weight: 600; font-size: 1.25rem; color: %1$s; margin-bottom: 10px; }
+.pv-basis { margin-left: 10px; font-family: inherit; font-size: .75rem; font-weight: 600; padding: 2px 9px; border-radius: 10px; background: %6$s; color: %5$s; vertical-align: middle; }
+.pv-proj-grid { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(320px, 1.2fr); gap: 28px; align-items: end; }
+.pv-bet-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.pv-bet-grade { font-family: '%3$s', sans-serif; font-weight: 700; font-size: 2.2rem; line-height: 1; color: %1$s; }
+.pv-bars { display: flex; align-items: flex-end; gap: 4px; height: 96px; max-width: 480px; }
+.pv-bar { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; flex: 1 1 0; max-width: 38px; height: 100%%; }
+.pv-bar-n { font-size: .72rem; font-weight: 700; color: %1$s; height: 14px; }
+.pv-bar-fill { width: 78%%; border-radius: 3px 3px 0 0; background: %4$s; border: 1px solid rgba(22,33,58,.18); border-bottom: 0; }
+.pv-bar-empty .pv-bar-fill { border-color: transparent; }
+.pv-bar-x { font-size: .68rem; color: %5$s; margin-top: 3px; border-top: 1px solid %4$s; width: 100%%; text-align: center; padding-top: 2px; }
+.pv-bet-note { font-size: .75rem; color: %5$s; margin-top: 6px; }
+.pv-stats { display: grid; grid-template-columns: repeat(4, minmax(84px, 1fr)); gap: 10px; }
+.pv-stat { background: %6$s; border: 1px solid %4$s; border-radius: 6px; padding: 10px 12px; }
+.pv-stat-label { font-size: .78rem; font-weight: 600; color: %5$s; }
+.pv-stat-value { font-family: '%3$s', sans-serif; font-weight: 700; font-size: 1.9rem; line-height: 1.05; color: %1$s; margin-top: 2px; }
+.pv-stat-sub { font-size: .75rem; color: %5$s; }
+.pv-luck-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 22px; margin-top: 14px; padding: 9px 12px; border-radius: 6px; background: %6$s; border: 1px solid %4$s; }
+.pv-luck-title { font-family: '%3$s', sans-serif; font-weight: 600; font-size: 1rem; color: %1$s; }
+.pv-luck-piece { font-size: .85rem; color: %5$s; display: flex; gap: 6px; align-items: baseline; }
+.pv-luck-piece b { font-weight: 700; font-size: .95rem; }
+.pv-up { color: #b23b2e; }
+.pv-down { color: %2$s; }
+@media (max-width: 900px) { .pv-proj-grid { grid-template-columns: 1fr; } .pv-stats { grid-template-columns: repeat(2, 1fr); } }
 .pv-weight-bar { height: 10px; max-width: 420px; background: %4$s; border-radius: 5px; overflow: hidden; margin-top: 8px; }
 .pv-weight-stuff { height: 100%%; background: %2$s; }
 .pv-section { font-family: '%3$s', sans-serif; font-weight: 600; font-size: 1.3rem; margin: 18px 0 8px; color: %1$s; }

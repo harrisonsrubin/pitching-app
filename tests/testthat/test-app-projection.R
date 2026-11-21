@@ -7,12 +7,21 @@ test_that("load_outputs brings in the latest projections and the luck gaps", {
   expect_true(all(unlist(o$projections[paste0("chip_", 1:10)]) >= 20, na.rm = TRUE))
 })
 
-test_that("the Grades card shows the bet, ERA, FIP, luck and Step odds", {
+test_that("the ten chips are counted onto the 20-80 grade steps", {
+  ch <- chip_counts(c(52, 54, 55, 56, 58, 61, 62, 59, 79, 81))
+  expect_equal(names(ch), as.character(seq(20, 80, 5)))
+  expect_equal(sum(ch), 10)
+  expect_equal(unname(ch[c("50", "55", "60", "65", "80")]), c(1, 3, 4, 0, 2))
+})
+
+test_that("the Grades card lays out the bet bars, ERA, FIP, Step odds and the luck row", {
   o <- proj_fx()
   h <- as.character(projection_card(o$projections, o$luck, 101L, "MLB", 2026L))
-  expect_match(h, "ERA 3.2"); expect_match(h, "FIP 3.2"); expect_match(h, "Step forward 12%"); expect_match(h, "Step back 6%")
-  expect_match(h, "Luck gap 2026")
-  expect_equal(lengths(regmatches(h, gregexpr('class="pv-chip"', h))), 10)
+  expect_equal(lengths(regmatches(h, gregexpr('class="pv-bar[" ]', h))), 13)
+  expect_match(h, "True talent"); expect_match(h, ">62<")
+  expect_match(h, "ERA"); expect_match(h, "3.20"); expect_match(h, "2.70–3.80")
+  expect_match(h, "FIP"); expect_match(h, "Step forward"); expect_match(h, "12%"); expect_match(h, "6%")
+  expect_match(h, "2026 luck"); expect_match(h, "BABIP"); expect_match(h, "\\+0.30")
   expect_false(grepl("MLB-equivalent", h))
 })
 
@@ -45,10 +54,27 @@ test_that("the Projection tab shows the 1-5 season table and the luck breakdown"
   })
 })
 
-test_that("the leaderboard adds projected ERA and True Talent for the projection season", {
+test_that("the Projections tab lists every projected pitcher's next-season numbers", {
   o <- proj_fx()
-  t <- leaderboard_table(o$grades, o$pitchers, "MLB", 2026L, "All", 0, "global", o$projections)
-  expect_true(all(c("proj_era", "true_talent") %in% names(t)))
+  t <- projections_table(o$projections, o$pitchers, basis = "All", team = "All", min_ip = 0)
+  expect_setequal(t$pitcher, c(101L, 102L))
+  expect_true(all(c("name", "team", "basis", "true_talent", "era", "era_lo", "era_hi", "fip", "k", "bbhbp",
+                    "hr", "hbip", "step_forward", "step_back") %in% names(t)))
+  expect_equal(t$era[t$pitcher == 101], 3.2)
   expect_equal(t$true_talent[t$pitcher == 101], 62)
-  expect_true(is.na(t$true_talent[t$pitcher == 103]))
+  expect_equal(t$team[t$pitcher == 101], "DET")
+  expect_equal(projections_table(o$projections, o$pitchers, basis = "MLB-equivalent", team = "All", min_ip = 0)$pitcher, 102L)
+  expect_equal(projections_table(o$projections, o$pitchers, basis = "All", team = "SEA", min_ip = 0)$pitcher, integer())
+})
+
+test_that("the Projections tab renders and the grade Leaderboard is back to grades only", {
+  o <- proj_fx()
+  sel <- list(state = shiny::reactive(list(level = "MLB", season = 2026L, pitcher = 101L, side = "All")), select = function(...) NULL)
+  shiny::testServer(projectionsServer, args = list(outputs = o, sel = sel), {
+    session$setInputs(basis = "All", team = "All", min_ip = 0)
+    expect_false(is.null(output$table))
+    expect_match(output$title$html, "2027")
+  })
+  t <- leaderboard_table(o$grades, o$pitchers, "MLB", 2026L, "All", 0, "global")
+  expect_false(any(c("proj_era", "true_talent") %in% names(t)))
 })

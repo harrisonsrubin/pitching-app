@@ -15,17 +15,36 @@ pitcher_projection <- function(proj, pitcher, season) {
 
 signed <- function(x, digits = 2) ifelse(is.na(x), "–", sprintf(paste0("%+.", digits, "f"), x))
 
-bet_strip <- function(ch) {
+CHIP_RUNGS <- seq(20, 80, 5)
+
+# The 10 chips counted onto the 20-80 grade steps (each chip to its nearest step).
+chip_counts <- function(ch) {
   ch <- ch[!is.na(ch)]
-  if (!length(ch)) return(NULL)
-  bin <- round(ch / 2)                                   # stack chips that land on the same spot
-  level <- stats::ave(seq_along(bin), bin, FUN = seq_along) - 1
-  shiny::div(class = "pv-bet",
-      shiny::div(class = "pv-bet-axis", lapply(seq(20, 80, 10), function(t)
-        shiny::span(class = "pv-bet-tick", style = sprintf("left:%.1f%%;", (t - 20) / 60 * 100), t))),
-      lapply(seq_along(ch), function(i)
-        shiny::span(class = "pv-chip", style = sprintf("left:%.1f%%; bottom:%dpx; background:%s;", (ch[i] - 20) / 60 * 100,
-                                                 6 + 11 * level[i], grade_color(ch[i])))))
+  r <- pmin(pmax(round(ch / 5) * 5, 20), 80)
+  stats::setNames(vapply(CHIP_RUNGS, function(g) sum(r == g), 0), as.character(CHIP_RUNGS))
+}
+
+# Bars at each grade step, height by chips (count on top, step below), in grade colors.
+bet_bars <- function(ch) {
+  n <- chip_counts(ch)
+  if (sum(n) == 0) return(NULL)
+  top <- max(n)
+  shiny::div(class = "pv-bars", lapply(seq_along(CHIP_RUNGS), function(i) {
+    k <- n[[i]]
+    shiny::div(class = if (k > 0) "pv-bar" else "pv-bar pv-bar-empty",
+               title = sprintf("Grade %d: %d chip%s", CHIP_RUNGS[i], k, if (k == 1) "" else "s"),
+               shiny::span(class = "pv-bar-n", if (k > 0) k else ""),
+               shiny::span(class = "pv-bar-fill", style = sprintf("height:%dpx;%s", if (k > 0) round(8 + 52 * k / top) else 3,
+                                                                  if (k > 0) sprintf(" background:%s;", grade_color(CHIP_RUNGS[i])) else "")),
+               shiny::span(class = "pv-bar-x", CHIP_RUNGS[i]))
+  }))
+}
+
+proj_stat <- function(label, value, sub = NULL, tip = NULL) {
+  shiny::div(class = "pv-stat", title = tip,
+             shiny::div(class = "pv-stat-label", label),
+             shiny::div(class = "pv-stat-value", value),
+             if (!is.null(sub)) shiny::div(class = "pv-stat-sub", sub))
 }
 
 projection_card <- function(proj, luck, pitcher, level, season) {
@@ -35,20 +54,29 @@ projection_card <- function(proj, luck, pitcher, level, season) {
   if (!nrow(h1)) return(NULL)
   l <- if (!is.null(luck) && nrow(luck)) luck[luck$pitcher == pitcher & luck$season == season, ] else NULL
   if (!is.null(l) && nrow(l) > 1) l <- l[l$level == level, ][1, ]
-  luck_line <- if (!is.null(l) && nrow(l) == 1 && !is.na(l$gap))
-    shiny::div(class = "pv-proj-line", title = LUCK_TIP,
-        sprintf("Luck gap %d: %s ERA (BABIP %s, strand %s%s)", season, signed(l$gap), signed(l$babip), signed(l$strand),
-                if (is.na(l$hr_fb)) "" else paste0(", HR/FB ", signed(l$hr_fb))))
+  luck_row <- if (!is.null(l) && nrow(l) == 1 && !is.na(l$gap)) {
+    piece <- function(lab, v) if (!is.na(v)) shiny::div(class = "pv-luck-piece", shiny::span(lab), shiny::tags$b(class = if (v > 0) "pv-up" else "pv-down", signed(v)))
+    shiny::div(class = "pv-luck-row", title = LUCK_TIP,
+               shiny::div(class = "pv-luck-title", sprintf("%d luck", season)),
+               piece("Gap (ERA)", l$gap), piece("BABIP", l$babip), piece("Strand", l$strand), piece("HR/FB", l$hr_fb))
+  }
   shiny::div(class = "pv-proj",
-      shiny::div(class = "pv-proj-head", sprintf("True talent bet (%d)", h1$target_season),
-          if (identical(h1$basis, "MLB-equivalent")) shiny::span(class = "pv-basis", "MLB-equivalent")),
-      bet_strip(unlist(h1[paste0("chip_", 1:10)])),
-      shiny::div(class = "pv-proj-line",
-          sprintf("Projected %d: ERA %.2f (%.2f–%.2f) · FIP %.2f (%.2f–%.2f)", h1$target_season, h1$era, h1$era_lo,
-                  h1$era_hi, h1$fip, h1$fip_lo, h1$fip_hi)),
-      luck_line,
-      shiny::div(class = "pv-proj-line", title = STEP_TIP,
-          sprintf("Step forward %.0f%% · Step back %.0f%%", 100 * h1$step_forward, 100 * h1$step_back)))
+    shiny::div(class = "pv-proj-title", sprintf("%d projection", h1$target_season),
+               if (identical(h1$basis, "MLB-equivalent")) shiny::span(class = "pv-basis", "MLB-equivalent")),
+    shiny::div(class = "pv-proj-grid",
+      shiny::div(class = "pv-bet",
+        shiny::div(class = "pv-bet-head",
+                   shiny::span(class = "pv-stat-label", "True talent"),
+                   shiny::span(class = "pv-bet-grade", round(h1$tt_grade)),
+                   shiny::span(class = "pv-stat-sub", sprintf("(%d–%d)", round(h1$tt_lo), round(h1$tt_hi)))),
+        bet_bars(unlist(h1[paste0("chip_", 1:10)])),
+        shiny::div(class = "pv-bet-note", "10 chips: where his true talent next season is likely to land")),
+      shiny::div(class = "pv-stats",
+        proj_stat("ERA", sprintf("%.2f", h1$era), sprintf("%.2f–%.2f", h1$era_lo, h1$era_hi)),
+        proj_stat("FIP", sprintf("%.2f", h1$fip), sprintf("%.2f–%.2f", h1$fip_lo, h1$fip_hi)),
+        proj_stat("Step forward", sprintf("%.0f%%", 100 * h1$step_forward), "0.75+ ERA better", STEP_TIP),
+        proj_stat("Step back", sprintf("%.0f%%", 100 * h1$step_back), "0.75+ ERA worse", STEP_TIP))),
+    luck_row)
 }
 
 outlook_table <- function(p) {

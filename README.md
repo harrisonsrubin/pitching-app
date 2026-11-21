@@ -252,10 +252,10 @@ Pre-arbitration pitchers carry the largest surplus, and many pitched in Triple-A
 
 ## 10. App
 
-- Shiny (R), built in modules. Pages: Grades, Projection, Movement, Location, Leaderboard, Stuff Map, Command & Tunneling, Rolling, Pitch-Type Editor, Scorecard, plus new **Value**, **What-If**, **Team Fit**, and **Payroll Optimizer** pages (P4–P6). The old Scouting Report page is dropped.
+- Shiny (R), built in modules. Pages: Grades, Projection, Movement, Location, Leaderboard, Projections, Stuff Map, Command & Tunneling, Rolling, Pitch-Type Editor, Scorecard, plus new **Value**, **What-If**, **Team Fit**, and **Payroll Optimizer** pages (P4–P6). The old Scouting Report page is dropped.
 - **Stuff Map:** each pitcher's average movement for one pitch type (arm-side break, so hands compare), colored by his Stuff grade.
 - **Command & Tunneling:** descriptive only, no new grade. Shares of pitches in Statcast-style attack zones sized to each batter's zone (heart under 67% of the way to the edge, shadow 67–133%, chase 133–200%, waste beyond) next to the tested Location grade; for the selected pitcher, each pitch pair's gap 23.8 ft in front of the plate versus at the plate.
-- **Projection:** the Grades card shows the true talent bet, projected ERA and FIP, the luck gap and Step forward / Step back; the Projection page has the 1–5 season outlook (true-talent and season ranges, home-park ERA), component rates, how much the pitch model versus results moved the estimate, and the luck breakdown. The Leaderboard adds projected ERA and True Talent.
+- **Projection:** the Grades card shows the true talent bet, projected ERA and FIP, the luck gap and Step forward / Step back; the Projection page has the 1–5 season outlook (true-talent and season ranges, home-park ERA), component rates, how much the pitch model versus results moved the estimate, and the luck breakdown. A **Projections** tab lists every projected pitcher's next-season numbers (true talent, ERA, FIP, component rates, Step odds), sortable and filterable by basis, team and innings.
 - **Rolling:** each pitch type's Stuff / Location / Pitching grade from its last 100 pitches up to each game (from 50 pitches on), on the season grades' scale, plus rolling velocity.
 - Loads published outputs at startup; pitch-level display data loads per pitcher and season from the private store.
 - A level filter (MLB / Triple-A / both).

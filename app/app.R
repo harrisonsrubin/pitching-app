@@ -19,6 +19,7 @@ ui <- page_navbar(
   nav_panel("Movement", movementUI("movement")),
   nav_panel("Location", locationUI("location")),
   nav_panel("Leaderboard", leaderboardUI("leaderboard")),
+  nav_panel("Projections", projectionsUI("projections")),
   nav_panel("Stuff Map", stuffmapUI("stuffmap")),
   nav_panel("Command & Tunneling", commandUI("command")),
   nav_panel("Rolling", rollingUI("rolling")),
@@ -34,6 +35,7 @@ server <- function(input, output, session) {
   movementServer("movement", outputs, sel, display)
   locationServer("location", sel, display)
   leaderboardServer("leaderboard", outputs, sel, session)
+  projectionsServer("projections", outputs, sel, session)
   stuffmapServer("stuffmap", outputs, sel)
   commandServer("command", outputs, sel)
   rollingServer("rolling", outputs, sel, display)

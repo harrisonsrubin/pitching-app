@@ -7,7 +7,8 @@ OUTPUTS_TAG <- "outputs"
 outputs_for <- function(level, season) {
   c(grades_output_key(level, season), components_output_key(level, season), pitchers_key(level, season),
     movement_ref_key(level, season), pitch_pctl_key(level, season),
-    profiles_key(level, season), command_key(level, season), tunnel_key(level, season), ANCHORS_OUTPUT)
+    profiles_key(level, season), command_key(level, season), tunnel_key(level, season), ANCHORS_OUTPUT,
+    windows_key(level, season), parks_key(level, season))
 }
 
 publish_outputs <- function(keys, app_repo, token = NULL) {

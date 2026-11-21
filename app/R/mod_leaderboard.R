@@ -2,7 +2,7 @@
 # Location / Pitching plus Stuff and Location by pitch type. Clicking a row opens that
 # pitcher on the Grades page.
 
-leaderboard_table <- function(grades, pitchers, level, season, team, min_pitches, scale) {
+leaderboard_table <- function(grades, pitchers, level, season, team, min_pitches, scale, projections = NULL) {
   lv <- if (identical(level, "Both")) c("MLB", "AAA") else level
   p <- pitchers[pitchers$level %in% lv & pitchers$season == season & pitchers$pitches >= min_pitches, ]
   if (!identical(team, "All")) p <- p[vapply(strsplit(p$teams, ",", fixed = TRUE), function(t) team %in% t, TRUE), ]
@@ -23,8 +23,19 @@ leaderboard_table <- function(grades, pitchers, level, season, team, min_pitches
   p %>% dplyr::select(level, pitcher, name, team = team_abbrev, pitches) %>%
     dplyr::inner_join(overall, by = c("level", "pitcher")) %>%
     dplyr::left_join(types, by = c("level", "pitcher")) %>%
-    dplyr::select(pitcher, name, team, level, pitches, dplyr::any_of(c("stuff", "location", "pitching")), dplyr::all_of(type_cols)) %>%
+    dplyr::left_join(projection_columns(projections, season), by = "pitcher") %>%
+    dplyr::select(pitcher, name, team, level, pitches, dplyr::any_of(c("stuff", "location", "pitching")),
+                  proj_era, true_talent, dplyr::all_of(type_cols)) %>%
     dplyr::arrange(dplyr::desc(pitching))
+}
+
+# Next-season projected ERA and true talent grade, for the season projections start from.
+projection_columns <- function(projections, season) {
+  empty <- tibble::tibble(pitcher = integer(), proj_era = numeric(), true_talent = numeric())
+  if (is.null(projections) || !nrow(projections)) return(empty)
+  p <- projections[projections$horizon == 1 & projections$base_season == season, ]
+  if (!nrow(p)) return(empty)
+  dplyr::transmute(p, pitcher, proj_era = era, true_talent = tt_grade)
 }
 
 leaderboardUI <- function(id) {
@@ -62,19 +73,20 @@ leaderboardServer <- function(id, outputs, sel, parent = NULL) {
     board <- reactive({
       req(input$season, input$team, scale())
       leaderboard_table(outputs$grades, outputs$pitchers, input$level, as.integer(input$season), input$team,
-                        input$min_pitches, scale())
+                        input$min_pitches, scale(), outputs$projections)
     })
     output$table <- DT::renderDT({
       t <- board()
       shown <- t %>% dplyr::select(-pitcher) %>%
         dplyr::rename(Name = name, Team = team, Level = level, Pitches = pitches,
-                      Stuff = stuff, Location = location, Pitching = pitching)
-      grade_cols <- setdiff(names(shown), c("Name", "Team", "Level", "Pitches"))
+                      Stuff = stuff, Location = location, Pitching = pitching,
+                      `Proj ERA` = proj_era, `True Talent` = true_talent)
+      grade_cols <- setdiff(names(shown), c("Name", "Team", "Level", "Pitches", "Proj ERA"))
       DT::datatable(shown, rownames = FALSE, selection = "single", class = "compact hover", fillContainer = FALSE,
                     options = list(pageLength = 25, scrollX = TRUE, order = list(list(6, "desc")),
                                    columnDefs = list(list(className = "pv-name-cell", targets = 0),
                                                      list(className = "pv-gradecell", targets = which(names(shown) %in% grade_cols) - 1)))) %>%
-        DT::formatRound(grade_cols, 0) %>%
+        DT::formatRound(grade_cols, 0) %>% DT::formatRound("Proj ERA", 2) %>%
         DT::formatStyle(grade_cols, backgroundColor = grade_fill(), color = grade_text_color())
     })
     observeEvent(input$table_rows_selected, {

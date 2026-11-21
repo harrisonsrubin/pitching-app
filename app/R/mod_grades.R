@@ -81,7 +81,8 @@ gradesServer <- function(id, outputs, sel, display) {
                                             LEVEL_LABELS[[s$level]], s$season)),
               div(class = "pv-line", sprintf("%s games (%s starts), %s innings, %s pitches", fmt_num(p$g, 0),
                                              fmt_num(p$gs, 0), ip, format(p$pitches, big.mark = ",")))),
-          div(class = "pv-grades", tile("stuff", "Stuff"), tile("location", "Location"), tile("pitching", "Pitching")))
+          div(class = "pv-grades", tile("stuff", "Stuff"), tile("location", "Location"), tile("pitching", "Pitching")),
+          projection_card(outputs$projections, outputs$luck, s$pitcher, s$level, s$season))
     })
     tbl <- reactive({
       s <- sel$state()

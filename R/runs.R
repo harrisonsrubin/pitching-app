@@ -20,7 +20,9 @@ pa_table <- function(pitches) {
                      inning_topbot = dplyr::first(inning_topbot),
                      outs_before = dplyr::first(outs_when_up),
                      runs = as.integer(sum(post_bat_score - bat_score, na.rm = TRUE)),
-                     events = dplyr::last(events), .groups = "drop") %>%
+                     events = dplyr::last(events),
+                     bb_type = if ("bb_type" %in% names(p)) dplyr::last(bb_type) else NA_character_,
+                     .groups = "drop") %>%
     dplyr::arrange(game_pk, at_bat_number)
   half_order <- pa$inning * 2 + (pa$inning_topbot == "Bot")
   pa %>%
@@ -35,7 +37,7 @@ pa_table <- function(pitches) {
                     final_half ~ event_outs,
                     TRUE ~ 3L - outs_before))) %>%
     dplyr::ungroup() %>%
-    dplyr::select(game_pk, at_bat_number, pitcher, season, game_date, inning, inning_topbot, outs, runs, events)
+    dplyr::select(game_pk, at_bat_number, pitcher, season, game_date, inning, inning_topbot, outs, runs, events, bb_type)
 }
 
 game_scores <- function(pitches) {
@@ -105,7 +107,7 @@ marcel_ra9 <- function(hist, season, lg_ra9) {
 # outs and runs (~480 such PAs per MLB season).
 RUN_COLS <- c("game_pk", "pitcher", "season", "game_date", "inning", "inning_topbot", "at_bat_number",
               "pitch_number", "outs_when_up", "bat_score", "post_bat_score", "events", "home_team",
-              "away_team", "post_home_score", "post_away_score", "balls", "strikes", "description")
+              "away_team", "post_home_score", "post_away_score", "balls", "strikes", "description", "bb_type")
 
 load_run_pitches <- function(level, season) {
   p <- arrow::open_dataset(store_path(statcast_season_key(level, season))) %>%

@@ -8,6 +8,8 @@ test_that("app server starts on fixture data and every page renders", {
                       `leaderboard-min_pitches` = 0)
     expect_false(is.null(output$`grades-table`))
     expect_match(output$`grades-header`$html, "Ace One")
+    expect_match(output$`grades-header`$html, "True talent bet")
+    expect_false(is.null(output$`projection-table`))
     expect_false(is.null(output$`movement-plot`))
     expect_false(is.null(output$`location-plot`))
     expect_false(is.null(output$`leaderboard-table`))

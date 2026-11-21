@@ -66,3 +66,4 @@ jobs:
               Rscript scripts/publish.R season $LV $S
             done
           done
+          Rscript scripts/project.R $(Rscript -e 'source("R/load.R"); cat(last_season())')

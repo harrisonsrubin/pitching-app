@@ -153,3 +153,13 @@ test_that("every workflow installs the R version renv.lock was built with", {
     expect_equal(as.character(setup[[1]]$with$`r-version`), lock_r, info = f)
   }
 })
+
+test_that("nightly, weekly and rescore run the projections, with the app repo token", {
+  for (f in c("nightly.yml", "weekly.yml", "rescore.yml")) {
+    y <- yaml::read_yaml(file.path(wf_dir(), f))
+    runs <- unlist(lapply(y$jobs, function(j) vapply(j$steps, function(s) s$run %||% "", "")))
+    expect_true(any(grepl("scripts/project.R", runs, fixed = TRUE)), info = f)
+    env <- unlist(lapply(y$jobs, function(j) names(j$env)))
+    expect_true(all(c("PV_APP_REPO", "APP_GH_TOKEN", "PV_DATA_REPO") %in% env), info = f)
+  }
+})

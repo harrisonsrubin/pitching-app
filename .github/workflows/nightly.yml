@@ -57,3 +57,5 @@ jobs:
             done
             Rscript scripts/publish.R season $LV $SEASON
           done
+      - name: Projections
+        run: Rscript scripts/project.R $(Rscript -e 'source("R/load.R"); cat(last_season())')

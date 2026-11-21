@@ -102,7 +102,15 @@ load_outputs <- function(cfg) {
     grades <- dplyr::rename(grades, grade_lo90 = grade_lo80, grade_hi90 = grade_hi80)
   if (!is.null(grades) && nrow(grades))
     grades <- dplyr::mutate(grades, dplyr::across(dplyr::any_of(c("grade_type", "grade_global", "grade_lo90", "grade_hi90")), clamp_grade))
-  list(grades = grades,
+  pf <- list.files(dir, pattern = "^projections_\\d{4}\\.parquet$", full.names = TRUE)
+  projections <- if (length(pf)) {
+    latest <- pf[which.max(as.integer(gsub("\\D", "", basename(pf))))]
+    tibble::as_tibble(arrow::read_parquet(latest)) %>%
+      dplyr::mutate(dplyr::across(dplyr::matches("^(tt_grade|tt_lo|tt_hi|chip_\\d+)$"), clamp_grade))
+  } else NULL
+  lf <- list.files(dir, pattern = "^luck_(MLB|AAA)_\\d{4}\\.parquet$", full.names = TRUE)
+  luck <- dplyr::bind_rows(lapply(lf, function(p) tibble::as_tibble(arrow::read_parquet(p))))
+  list(grades = grades, projections = projections, luck = luck,
        profiles = tagged("profiles"), command = tagged("command"), tunnel = tagged("tunnel"),
        anchors = if (file.exists(anchors_file)) readr::read_csv(anchors_file, show_col_types = FALSE,
                    col_types = readr::cols(facet = "c", scope = "c", pitch_type = "c", mean = "d", unit = "d")) else NULL,

@@ -40,6 +40,18 @@ body { font-variant-numeric: tabular-nums; }
 .pv-grade { min-width: 92px; text-align: center; padding: 8px 10px 6px; border-radius: 6px; border: 1px solid rgba(22,33,58,.08); }
 .pv-grade .pv-num { font-family: '%3$s', sans-serif; font-weight: 700; font-size: 2.6rem; line-height: 1; color: %1$s; }
 .pv-grade .pv-range { font-size: .75rem; color: %1$s; opacity: .75; }
+.pv-proj { flex-basis: 100%%; border-top: 1px solid %4$s; padding-top: 12px; margin-top: 2px; }
+.pv-proj-head { font-family: '%3$s', sans-serif; font-weight: 600; font-size: 1.15rem; color: %1$s; }
+.pv-basis { margin-left: 10px; font-family: inherit; font-size: .75rem; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: %6$s; color: %5$s; }
+.pv-bet { position: relative; height: 62px; margin: 6px 4px 4px; max-width: 560px; }
+.pv-bet-axis { position: absolute; left: 0; right: 0; bottom: 0; height: 18px; border-top: 1px solid %4$s; }
+.pv-bet-tick { position: absolute; top: 2px; transform: translateX(-50%%); font-size: .7rem; color: %5$s; }
+.pv-chip { position: absolute; width: 11px; height: 11px; margin-left: -5px; margin-bottom: 14px; border-radius: 50%%; border: 1px solid rgba(22,33,58,.35); }
+.pv-proj-line { font-size: .92rem; color: %1$s; margin-top: 3px; }
+.pv-weight-bar { height: 10px; max-width: 420px; background: %4$s; border-radius: 5px; overflow: hidden; margin-top: 8px; }
+.pv-weight-stuff { height: 100%%; background: %2$s; }
+.pv-section { font-family: '%3$s', sans-serif; font-weight: 600; font-size: 1.3rem; margin: 18px 0 8px; color: %1$s; }
+.pv-luck { max-width: 360px; }
 .pv-grade .pv-tool { font-size: .85rem; font-weight: 600; color: %1$s; }
 
 h2.pv-title, .pv-title { font-family: '%3$s', sans-serif; font-weight: 600; font-size: 1.7rem; margin: 4px 0 10px; }

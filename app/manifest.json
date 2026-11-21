@@ -2917,7 +2917,7 @@
   },
   "files": {
     "app.R": {
-      "checksum": "3dfe53c80b20e9ec8c8314b875a15d7a"
+      "checksum": "acf48944484998819f594c7458ca3064"
     },
     "R/admin.R": {
       "checksum": "ed83e8d4a3060c825114b0c7bfb2edfc"
@@ -2926,7 +2926,7 @@
       "checksum": "635b1a518a37768288fc76073ea41e1c"
     },
     "R/data.R": {
-      "checksum": "e1e4298d8d785b09adaa565014002053"
+      "checksum": "6ffb2966f4605bed9d7b1ed4173e17b2"
     },
     "R/github_corrections.R": {
       "checksum": "4423d84895e786a9aabf206613d7eb3d"
@@ -2938,16 +2938,19 @@
       "checksum": "126e99f8cbab2fdfb3a550e0ff007dd9"
     },
     "R/mod_grades.R": {
-      "checksum": "a1a53190d5e07a3d05d3b32da852e996"
+      "checksum": "1fdcf3de6ab05007d573cb3ea0a515d3"
     },
     "R/mod_leaderboard.R": {
-      "checksum": "ed8d9c4f18466ae4621eb296750172c1"
+      "checksum": "3c30e2fcb1bbc5880db069e3d035a01e"
     },
     "R/mod_location.R": {
       "checksum": "fc5d0702c7eddc4fd7120b7da43447c0"
     },
     "R/mod_movement.R": {
       "checksum": "8c66fb36979490ac161932ba67f7e2ca"
+    },
+    "R/mod_projection.R": {
+      "checksum": "7312207d44b9acfdc87fadeb9211bc37"
     },
     "R/mod_rolling.R": {
       "checksum": "71b8f13dfbfdd1a30a24bad9342a5973"
@@ -2965,7 +2968,7 @@
       "checksum": "235c184c19bce653831f264af949c245"
     },
     "R/theme.R": {
-      "checksum": "514e11fb2d0f78a62d97a60c5a870508"
+      "checksum": "19ed95f40eb896e6122703abf6cdc4b9"
     }
   },
   "users": null

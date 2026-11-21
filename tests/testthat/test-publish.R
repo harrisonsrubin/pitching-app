@@ -66,7 +66,7 @@ test_that("display publishing refuses a public or app repo", {
 
 test_that("outputs include the P2b aggregates and the grade anchors, still nothing pitch-level", {
   k <- outputs_for("MLB", 2026L)
-  expect_length(k, 9)
+  expect_gte(length(k), 9)   # P3a adds windows and parks (test-windows.R pins 11)
   expect_true(all(c("outputs/profiles_MLB_2026.parquet", "outputs/command_MLB_2026.parquet",
                     "outputs/tunnel_MLB_2026.parquet", "outputs/grade_anchors.csv") %in% k))
   expect_false(any(grepl("display", k)))

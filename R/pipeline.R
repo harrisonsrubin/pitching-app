@@ -48,6 +48,7 @@ build_outputs <- function(level, season, anchors = read_anchors()) {
     tunnel_key(level, season))
   write_anchors_output(anchors)
   rm(tr, tun); gc()
+  write_projection_aggregates(level, season, x_key = xrv_key(level, season), anchors)
   sizes <- write_display(level, season, d)
   store_write(movement_ref(d), movement_ref_key(level, season))
   store_write(pitch_percentiles(d), pitch_pctl_key(level, season))

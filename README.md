@@ -177,10 +177,12 @@ Stuff + Location features, plus previous-pitch differences (tunneling and sequen
 ### 8.1 Bayesian true-talent projection
 - Unit: pitcher-season (season to date during the season).
 - Components: strikeout rate, walk + HBP rate, contact quality.
-- Each component: `league(season) + β·(pitch-model signals) + role + age curve + pitcher effect evolving across seasons`, fit with brms/cmdstanr.
+- Components per batter faced: strikeouts, walks + HBP, home runs, and hits on balls in play (per ball in play).
+- Each component: `league(season) + β·(pitch-model signals) + past results × sample size + role + age curve + Triple-A share + pitcher effect + pitcher×season change`, a binomial mixed model fit with lme4 (seconds per component), with ranges and odds from simulating the fitted model (parameter uncertainty, the pitcher's own talent uncertainty, which grows for small samples, and year-to-year change). If range coverage on the scorecard falls short, the same structure moves to a full Bayesian fit.
 - **Stuff as the prior, results as the update:** small samples lean on the pitch model, large samples on results; the weights are estimated, not hand-set.
 - Components → RA9 via a mapping fit on data. Aging curves for components and for physical traits (velo, extension, spin), learned from within-pitcher changes.
-- Outputs: the true talent bet, grade with interval, breakout/collapse odds, season ranges, and the luck gap (actual RA9 minus expected, attributed to BABIP, strand rate, and HR/FB).
+- Shown as park-neutral **ERA** (RA9 × the league's earned/total run ratio) and **FIP**, with 90% ranges; the Projection page adds ERA in the pitcher's home park.
+- Outputs: the true talent bet (10 chips at the 5th–95th percentiles of next season's true talent grade, 20-80 anchored on MLB 2023–2025), **Step forward / Step back** odds (chance next season's true-talent ERA is at least 0.75 runs better / worse than today's), season ranges, and the luck gap (actual ERA minus expected, attributed to BABIP, strand rate, and HR/FB, with the rest as "other").
 
 ### 8.2 Playing time and health
 - Per season: P(starter), P(available), innings given role, as distributions.
@@ -236,7 +238,7 @@ Pre-arbitration pitchers carry the largest surplus, and many pitched in Triple-A
 | Grade: stickiness | Is it a skill? | Year y vs y+1 for the same metric; split-half (odd/even games) |
 | Grade: predictive | Does it predict runs? | Rest-of-season (after 100/250/500 pitches) and next-season park-adjusted RA9 |
 | Grade: incremental | Does it beat what we knew? | Prior RA9 + grade vs prior RA9 alone |
-| Projection | Is the forecast and its range right? | Innings-weighted error on RA9, WAR, innings; 80% interval coverage; CRPS |
+| Projection | Is the forecast and its range right? | Innings-weighted error on RA9 (and ERA), WAR, innings; 90% interval coverage; CRPS; Step-odds calibration |
 | Dollars | Matches the market, finds bargains? | Out-of-sample free-agent contract error; surplus backtest |
 | What-ifs | Are they real? | Natural-experiment backtest |
 
@@ -246,13 +248,14 @@ Pre-arbitration pitchers carry the largest surplus, and many pitched in Triple-A
 
 **Signature chart:** stickiness (x) vs predictiveness (y) for every metric.
 
-**Success criteria (v1):** beat Marcel on innings-weighted rest-of-season and next-season RA9 error; beat full-season Pitching+ on next-season RA9 error and incremental value; stickiness at least matching Stuff+; 80% intervals cover 75–85% of outcomes.
+**Success criteria (v1):** beat Marcel on innings-weighted rest-of-season and next-season RA9 error; beat full-season Pitching+ on next-season RA9 error and incremental value; stickiness at least matching Stuff+; 90% intervals cover 85–95% of outcomes.
 
 ## 10. App
 
-- Shiny (R), built in modules. Pages: Grades, Movement, Location, Leaderboard, Stuff Map, Command & Tunneling, Rolling, Pitch-Type Editor, Scorecard, plus new **Value**, **What-If**, **Team Fit**, and **Payroll Optimizer** pages (P4–P6). The old Scouting Report page is dropped.
+- Shiny (R), built in modules. Pages: Grades, Projection, Movement, Location, Leaderboard, Stuff Map, Command & Tunneling, Rolling, Pitch-Type Editor, Scorecard, plus new **Value**, **What-If**, **Team Fit**, and **Payroll Optimizer** pages (P4–P6). The old Scouting Report page is dropped.
 - **Stuff Map:** each pitcher's average movement for one pitch type (arm-side break, so hands compare), colored by his Stuff grade.
 - **Command & Tunneling:** descriptive only, no new grade. Shares of pitches in Statcast-style attack zones sized to each batter's zone (heart under 67% of the way to the edge, shadow 67–133%, chase 133–200%, waste beyond) next to the tested Location grade; for the selected pitcher, each pitch pair's gap 23.8 ft in front of the plate versus at the plate.
+- **Projection:** the Grades card shows the true talent bet, projected ERA and FIP, the luck gap and Step forward / Step back; the Projection page has the 1–5 season outlook (true-talent and season ranges, home-park ERA), component rates, how much the pitch model versus results moved the estimate, and the luck breakdown. The Leaderboard adds projected ERA and True Talent.
 - **Rolling:** each pitch type's Stuff / Location / Pitching grade from its last 100 pitches up to each game (from 50 pitches on), on the season grades' scale, plus rolling velocity.
 - Loads published outputs at startup; pitch-level display data loads per pitcher and season from the private store.
 - A level filter (MLB / Triple-A / both).
@@ -344,3 +347,14 @@ PV_APP_LOCAL=1 PV_DATA_DIR=$PWD/data Rscript -e 'shiny::runApp("app", port = 812
 The app's environment variables (set in Connect Cloud, never committed): `PV_APP_REPO`, `PV_DATA_REPO`, `PV_DATA_TOKEN` (read-only, private data repo), `PV_CORRECTIONS_TOKEN` (contents read/write on this repo), `PV_ADMIN_HASH` (from `Rscript scripts/hash_password.R`). After changing app packages, regenerate `app/manifest.json` with `Rscript -e 'rsconnect::writeManifest("app", appPrimaryDoc = "app.R")'`.
 
 Workflows: `nightly` (in season) also rebuilds and publishes the current season; `rescore` runs on pushes to `corrections/**` and rebuilds every season edited since its last success; `deploy` updates the `deploy` branch. The current season rolls over by itself once its first game is played (`R/seasons.R`); 2027 is scored with the boosters trained on 2023–2026.
+
+## Running P3 (projection)
+
+```bash
+# Windows and park factors for every level-season (also built by build_outputs/update_season)
+Rscript -e 'source("R/load.R"); a <- read_anchors(); for (s in 2020:2026) write_projection_aggregates("MLB", s, xrv_key("MLB", s), a); for (s in 2023:2026) write_projection_aggregates("AAA", s, xrv_key("AAA", s), a)'
+Rscript scripts/freeze_projection_anchors.R      # once: 20-80 anchors for the true talent grade
+Rscript scripts/project.R 2026 --no-publish      # projections + luck gaps (~minutes); drop the flag to publish
+Rscript scripts/build_scorecard_p3.R             # scorecard/p3.md
+```
+The nightly (in season), weekly (off-season) and rescore workflows run `scripts/project.R` after their rebuilds.

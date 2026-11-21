@@ -15,6 +15,7 @@ ui <- page_navbar(
   fillable = FALSE,
   sidebar = sidebar(width = 300, sidebarUI("sel")),
   nav_panel("Grades", gradesUI("grades")),
+  nav_panel("Projection", projectionUI("projection")),
   nav_panel("Movement", movementUI("movement")),
   nav_panel("Location", locationUI("location")),
   nav_panel("Leaderboard", leaderboardUI("leaderboard")),
@@ -29,6 +30,7 @@ server <- function(input, output, session) {
   sel <- sidebarServer("sel", outputs)
   display <- displayServer(cfg, sel, cache)
   gradesServer("grades", outputs, sel, display)
+  projectionServer("projection", outputs, sel)
   movementServer("movement", outputs, sel, display)
   locationServer("location", sel, display)
   leaderboardServer("leaderboard", outputs, sel, session)

@@ -64,6 +64,20 @@ make_app_fixture <- function(dir) {
     "location", "type", "CH", 0, 0.005, "location", "type", "CB", 0, 0.005,
     "pitching", "type", "4S", 0, 0.005, "pitching", "type", "SL", 0, 0.005, "pitching", "type", "SNK", 0, 0.005,
     "pitching", "type", "CH", 0, 0.005, "pitching", "type", "CB", 0, 0.005), out("grade_anchors.csv"))
+  proj <- tidyr::expand_grid(pitcher = c(101L, 102L), horizon = 1:5) %>%
+    dplyr::mutate(name = ifelse(pitcher == 101, "Ace One", "Traded Two"), basis = ifelse(pitcher == 101, "MLB", "MLB-equivalent"),
+                  base_season = 2026L, target_season = 2026L + horizon,
+                  k = 0.28, k_lo = 0.24, k_hi = 0.32, bbhbp = 0.07, bbhbp_lo = 0.05, bbhbp_hi = 0.09,
+                  hr = 0.025, hr_lo = 0.02, hr_hi = 0.03, hbip = 0.29, hbip_lo = 0.27, hbip_hi = 0.31,
+                  era = 3.1 + 0.1 * horizon, era_lo = era - 0.5, era_hi = era + 0.6, era_out_lo = era - 1.2, era_out_hi = era + 1.5,
+                  fip = 3.2, fip_lo = 2.7, fip_hi = 3.8, ra9 = era / 0.92, tt_grade = 62, tt_lo = 54, tt_hi = 70,
+                  stuff_weight = 0.4, era_home = era * 1.03,
+                  step_forward = ifelse(horizon == 1, 0.12, NA), step_back = ifelse(horizon == 1, 0.06, NA))
+  for (i in 1:10) proj[[paste0("chip_", i)]] <- ifelse(proj$horizon == 1, 52 + 2 * i, NA)
+  arrow::write_parquet(proj, out("projections_2026.parquet"))
+  arrow::write_parquet(tibble::tibble(pitcher = 101L, season = 2026L, level = "MLB", actual_era = 3.6, expected_era = 3.15,
+                                      gap = 0.45, babip = 0.3, strand = 0.2, hr_fb = -0.05, other = 0),
+                       out("luck_MLB_2026.parquet"))
   writeLines(c("# P1 scorecard", "", "## Success criteria", "", "Grades measure the pitch.", "",
                "- PASS — Stuff (ours) is at least as sticky as Stuff+", "",
                "## Stickiness", "", "| metric | n | pearson |", "|---|---|---|", "| Stuff (ours) | 1,073 | 0.865 |", "",

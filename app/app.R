@@ -35,7 +35,7 @@ server <- function(input, output, session) {
   stuffmapServer("stuffmap", outputs, sel)
   commandServer("command", outputs, sel)
   rollingServer("rolling", outputs, sel, display)
-  editorServer("editor", cfg, sel, display)
+  editorServer("editor", cfg, sel, display, outputs)
   scorecardServer("scorecard", outputs)
 }
 

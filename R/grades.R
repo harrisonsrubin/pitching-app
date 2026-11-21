@@ -5,7 +5,7 @@
 # inflated by construction. 20-80 scale: 50 = reference-season average, 10 points =
 # one standard deviation of estimated true talent (MLB 2023–2025).
 
-Z80 <- stats::qnorm(0.9)   # 1.2816: half-width of an 80% interval in SDs
+Z90 <- stats::qnorm(0.95)   # 1.6449: half-width of a 90% interval in SDs
 
 fit_grades <- function(x, col) {
   x <- x[!is.na(x[[col]]) & !is.na(x$pitch_type), ]
@@ -107,16 +107,16 @@ grade_rows <- function(fit, anchors, facet) {
     xrv_per100 = 100 * bt$est,
     grade_type = to_grade(bt$est, ty$mean[it], ty$unit[it]),
     grade_global = to_grade(bt$est, gl$mean, gl$unit),
-    grade_lo80 = to_grade(bt$est + Z80 * bt$se, gl$mean, gl$unit),
-    grade_hi80 = to_grade(bt$est - Z80 * bt$se, gl$mean, gl$unit))
+    grade_lo90 = to_grade(bt$est + Z90 * bt$se, gl$mean, gl$unit),
+    grade_hi90 = to_grade(bt$est - Z90 * bt$se, gl$mean, gl$unit))
   bp <- fit$by_pitcher
   all_rows <- tibble::tibble(
     facet = facet, pitcher = bp$pitcher, pitch_type = "ALL", n = bp$n,
     xrv_per100 = 100 * bp$est,
     grade_type = NA_real_,
     grade_global = to_grade(bp$est, pi_$mean, pi_$unit),
-    grade_lo80 = to_grade(bp$est + Z80 * bp$se, pi_$mean, pi_$unit),
-    grade_hi80 = to_grade(bp$est - Z80 * bp$se, pi_$mean, pi_$unit))
+    grade_lo90 = to_grade(bp$est + Z90 * bp$se, pi_$mean, pi_$unit),
+    grade_hi90 = to_grade(bp$est - Z90 * bp$se, pi_$mean, pi_$unit))
   dplyr::bind_rows(type_rows, all_rows)
 }
 

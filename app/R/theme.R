@@ -71,7 +71,7 @@ table.dataTable tbody tr:last-child td { border-top: 2px solid %4$s; }
 plotly_style <- function(p) {
   plotly::layout(p, font = list(family = paste0(BODY_FONT, ", Helvetica, Arial, sans-serif"), color = INK, size = 13),
                  paper_bgcolor = "#ffffff", plot_bgcolor = "#ffffff",
-                 hoverlabel = list(font = list(family = BODY_FONT, size = 12), bgcolor = "#ffffff", bordercolor = LINE),
+                 hoverlabel = list(font = list(family = BODY_FONT, size = 12, color = INK), bgcolor = "#ffffff", bordercolor = LINE),
                  legend = list(orientation = "h", y = -0.12, font = list(size = 13)),
                  margin = list(t = 20, r = 20, b = 20, l = 60))
 }

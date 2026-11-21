@@ -37,7 +37,7 @@ make_app_fixture <- function(dir) {
     by <- dplyr::bind_rows(dplyr::distinct(d, pitcher, pitch_type), dplyr::distinct(d, pitcher) %>% dplyr::mutate(pitch_type = "ALL"))
     by %>% dplyr::mutate(facet = f, n = 30L, xrv_per100 = 0.1,
                          grade_type = ifelse(pitch_type == "ALL", NA_real_, 50 + pitcher %% 10),
-                         grade_global = 48 + pitcher %% 10, grade_lo80 = grade_global - 6, grade_hi80 = grade_global + 6)
+                         grade_global = 48 + pitcher %% 10, grade_lo90 = grade_global - 6, grade_hi90 = grade_global + 6)
   })) %>% dplyr::mutate(level = "MLB", season = 2026L, half = "full", .before = 1)
   g$grade_global[g$pitcher == 103 & g$pitch_type == "CB" & g$facet == "location"] <- NA_real_
   arrow::write_parquet(g, out("grades_MLB_2026.parquet"))

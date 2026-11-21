@@ -2917,55 +2917,55 @@
   },
   "files": {
     "app.R": {
-      "checksum": "0e163f5e5ef5015705ae021934e97963"
+      "checksum": "3dfe53c80b20e9ec8c8314b875a15d7a"
     },
     "R/admin.R": {
-      "checksum": "f4602f3f282188d03d5ce4fc7aaa9a12"
+      "checksum": "ed83e8d4a3060c825114b0c7bfb2edfc"
     },
     "R/constants.R": {
-      "checksum": "5d1e3025318ff71855077138431d2d92"
+      "checksum": "635b1a518a37768288fc76073ea41e1c"
     },
     "R/data.R": {
-      "checksum": "943b7d3b019d2dc235096e0ac60dc00f"
+      "checksum": "e1e4298d8d785b09adaa565014002053"
     },
     "R/github_corrections.R": {
       "checksum": "4423d84895e786a9aabf206613d7eb3d"
     },
     "R/mod_command.R": {
-      "checksum": "c456fad8dd60410dabb368570a3b2c7d"
+      "checksum": "3997d54f3154e43ff8389c05c1993d79"
     },
     "R/mod_editor.R": {
-      "checksum": "12571ac9cd71d9006cb415744f9aca6a"
+      "checksum": "126e99f8cbab2fdfb3a550e0ff007dd9"
     },
     "R/mod_grades.R": {
-      "checksum": "4af2244f843d9475575a12e80ee9d090"
+      "checksum": "a1a53190d5e07a3d05d3b32da852e996"
     },
     "R/mod_leaderboard.R": {
-      "checksum": "1d43a6ec220594a028237ef1c1d11b89"
+      "checksum": "ed8d9c4f18466ae4621eb296750172c1"
     },
     "R/mod_location.R": {
       "checksum": "fc5d0702c7eddc4fd7120b7da43447c0"
     },
     "R/mod_movement.R": {
-      "checksum": "0fe10db03823c7e42a91601cc8acd0e5"
+      "checksum": "8c66fb36979490ac161932ba67f7e2ca"
     },
     "R/mod_rolling.R": {
-      "checksum": "a52c32b2bbd63c1ae4ee3a399842690a"
+      "checksum": "71b8f13dfbfdd1a30a24bad9342a5973"
     },
     "R/mod_scorecard.R": {
       "checksum": "8228ded2b9103bc276b855bee6e6a4e3"
     },
     "R/mod_sidebar.R": {
-      "checksum": "c6d9f8ead3b4e436b5ca337a0e173de2"
+      "checksum": "8e2dd066a5cbed472990e714e577ac03"
     },
     "R/mod_stuffmap.R": {
-      "checksum": "b4c9d66b87c94059e79270ce44f7eee7"
+      "checksum": "90eec781b4941f5f2e9a932bf02c8020"
     },
     "R/pitch_summary.R": {
       "checksum": "235c184c19bce653831f264af949c245"
     },
     "R/theme.R": {
-      "checksum": "a14bf953a598fc816ecb8359c3137dc1"
+      "checksum": "514e11fb2d0f78a62d97a60c5a870508"
     }
   },
   "users": null

@@ -22,7 +22,7 @@ stuffmapUI <- function(id) {
     bslib::layout_columns(
       col_widths = c(8, 4),
       radioButtons(ns("pitch_type"), "Pitch type", PITCH_LABELS, selected = "4S", inline = TRUE),
-      sliderInput(ns("min_pitches"), "Min pitches of this type", min = 0, max = 500, value = 100, step = 25, ticks = FALSE)),
+      sliderInput(ns("min_pitches"), "Min pitches of this type", min = 0, max = 500, value = 0, step = 25, ticks = FALSE)),
     uiOutput(ns("message")),
     bslib::card(fill = FALSE, bslib::card_body(fillable = FALSE, plotly::plotlyOutput(ns("plot"), height = "620px"))),
     p(class = "pv-note", "Each dot is one pitcher's average for this pitch type. Arm-side break is positive for both hands. Color is his Stuff grade for the pitch; the pitcher selected in the sidebar is outlined."))
@@ -33,7 +33,7 @@ stuffmapServer <- function(id, outputs, sel) {
     data <- reactive({
       s <- sel$state()
       stuff_map_data(outputs$profiles, outputs$grades, outputs$pitchers, s$level, s$season,
-                     input$pitch_type %||% "4S", input$min_pitches %||% 100)
+                     input$pitch_type %||% "4S", input$min_pitches %||% 0)
     })
     output$message <- renderUI({
       if (nrow(data()) == 0) div(class = "alert alert-info", "No pitchers threw this pitch type enough for this season and filter.")
@@ -41,11 +41,10 @@ stuffmapServer <- function(id, outputs, sel) {
     output$plot <- plotly::renderPlotly({
       d <- data(); req(nrow(d) > 0)
       me <- d[d$pitcher == sel$state()$pitcher, ]
-      scale <- lapply(seq_along(GRADE_COLORS), function(i) list((i - 1) / (length(GRADE_COLORS) - 1), rev(GRADE_COLORS)[i]))
       text <- sprintf("<b>%s</b> (%s)<br>Stuff %d<br>%.1f mph, IVB %.1f, arm-side %.1f<br>%s pitches",
                       d$name, d$team, round(d$grade), d$velo, d$ivb, d$arm_side, format(d$n, big.mark = ","))
       p <- plotly::plot_ly(d, x = ~arm_side, y = ~ivb, type = "scatter", mode = "markers", text = text, hoverinfo = "text",
-                           marker = list(color = ~grade, cmin = 20, cmax = 80, colorscale = scale, size = 9,
+                           marker = list(color = ~grade, cmin = 20, cmax = 80, colorscale = grade_colorscale(), size = 9,
                                          line = list(color = "rgba(22,33,58,.35)", width = 0.5),
                                          colorbar = list(title = "Stuff", thickness = 12)),
                            name = "Pitchers", showlegend = FALSE)

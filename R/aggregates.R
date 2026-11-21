@@ -65,3 +65,11 @@ profiles_key <- function(level, season) outputs_key(sprintf("profiles_%s_%s.parq
 command_key <- function(level, season) outputs_key(sprintf("command_%s_%s.parquet", level, season))
 tunnel_key <- function(level, season) outputs_key(sprintf("tunnel_%s_%s.parquet", level, season))
 ANCHORS_OUTPUT <- "outputs/grade_anchors.csv"
+
+# Publish the anchors these grades were built on, so the app's rolling grades use the same scale.
+write_anchors_output <- function(anchors) {
+  path <- store_path(ANCHORS_OUTPUT)
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  readr::write_csv(anchors, path, na = "")
+  invisible(path)
+}

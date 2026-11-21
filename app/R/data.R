@@ -95,7 +95,14 @@ load_outputs <- function(cfg) {
     }))
   }
   anchors_file <- file.path(dir, "grade_anchors.csv")
-  list(grades = read_outputs(dir, "grades"),
+  grades <- read_outputs(dir, "grades")
+  # Files built before the switch to 90% intervals carry 80% columns; show them until the
+  # outputs are republished rather than failing.
+  if (!is.null(grades) && "grade_lo80" %in% names(grades) && !"grade_lo90" %in% names(grades))
+    grades <- dplyr::rename(grades, grade_lo90 = grade_lo80, grade_hi90 = grade_hi80)
+  if (!is.null(grades) && nrow(grades))
+    grades <- dplyr::mutate(grades, dplyr::across(dplyr::any_of(c("grade_type", "grade_global", "grade_lo90", "grade_hi90")), clamp_grade))
+  list(grades = grades,
        profiles = tagged("profiles"), command = tagged("command"), tunnel = tagged("tunnel"),
        anchors = if (file.exists(anchors_file)) readr::read_csv(anchors_file, show_col_types = FALSE,
                    col_types = readr::cols(facet = "c", scope = "c", pitch_type = "c", mean = "d", unit = "d")) else NULL,

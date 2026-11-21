@@ -46,8 +46,7 @@ build_outputs <- function(level, season, anchors = read_anchors()) {
   store_write(tunnel_centroids(dplyr::inner_join(
     dplyr::select(d, pitch_uid, pitcher, stand, pitch_type, plate_x, plate_z), tun, by = "pitch_uid")),
     tunnel_key(level, season))
-  dir.create(dirname(store_path(ANCHORS_OUTPUT)), recursive = TRUE, showWarnings = FALSE)
-  file.copy(file.path(repo_root(), "models", "grade_anchors.csv"), store_path(ANCHORS_OUTPUT), overwrite = TRUE)
+  write_anchors_output(anchors)
   rm(tr, tun); gc()
   sizes <- write_display(level, season, d)
   store_write(movement_ref(d), movement_ref_key(level, season))

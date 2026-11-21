@@ -31,13 +31,14 @@ rolling_grades <- function(display, anchors, facet, window = 100, min_n = 50) {
   a <- anchors[anchors$facet == facet & anchors$scope == "type", ]
   i <- match(r$pitch_type, a$pitch_type)
   r %>% dplyr::mutate(k = a$unit[i]^2 / (a$unit[i]^2 + s2 / n_window),
-                      value = 50 - 10 * k * (raw - a$mean[i]) / a$unit[i]) %>%
+                      value = clamp_grade(50 - 10 * k * (raw - a$mean[i]) / a$unit[i])) %>%
     dplyr::filter(!is.na(value)) %>% dplyr::select(-k)
 }
 
 rollingUI <- function(id) {
   ns <- NS(id)
   tagList(
+    uiOutput(ns("head")),
     radioButtons(ns("facet"), NULL, ROLLING_FACETS, inline = TRUE),
     uiOutput(ns("message")),
     bslib::card(fill = FALSE, bslib::card_body(fillable = FALSE, plotly::plotlyOutput(ns("plot"), height = "480px"))),
@@ -49,6 +50,7 @@ rollingServer <- function(id, outputs, sel, display) {
     data <- reactive({
       rolling_grades(display$rows(), outputs$anchors, input$facet %||% "stuff")
     })
+    output$head <- renderUI(pitcher_heading(outputs$pitchers, sel$state()))
     output$message <- renderUI({
       if (is.null(display$rows())) div(class = "alert alert-warning", UNAVAILABLE)
       else if (nrow(data()) == 0) div(class = "alert alert-info", "No pitch type has 50 pitches yet this season.")

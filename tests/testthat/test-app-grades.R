@@ -24,7 +24,7 @@ test_that("type scale shifts the range with the grade", {
   r <- o$grades[o$grades$pitcher == 101 & o$grades$pitch_type == "4S" & o$grades$facet == "stuff", ]
   shift <- r$grade_type - r$grade_global
   expect_equal(t$Stuff[t$pitch_type == "4S"],
-               sprintf("%d (%d–%d)", round(r$grade_type), round(r$grade_lo80 + shift), round(r$grade_hi80 + shift)))
+               sprintf("%d (%d–%d)", round(r$grade_type), round(r$grade_lo90 + shift), round(r$grade_hi90 + shift)))
   expect_equal(t$stuff_value[t$pitch_type == "4S"], r$grade_type)
   g <- grades_table(o$grades, o$components, 101L, "MLB", 2026L, NULL, "global")
   expect_equal(g$stuff_value[g$pitch_type == "4S"], r$grade_global)

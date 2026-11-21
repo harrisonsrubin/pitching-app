@@ -12,7 +12,31 @@ team_choices <- function(pitchers, level, season) {
 pitchers_for <- function(pitchers, level, season, team) {
   p <- pitchers[pitchers$level == level & pitchers$season == season, ]
   if (!identical(team, "All")) p <- p[vapply(strsplit(p$teams, ",", fixed = TRUE), function(t) team %in% t, TRUE), ]
-  p[order(-p$pitches), ]
+  p[order(last_name_key(p$name), p$name, -p$pitches), ]
+}
+
+# Sort key for "last name, A-Z": drops suffixes (Jr., III) and keeps particles, so
+# "Elvis De La Cruz" files under D like a box score would list him.
+NAME_SUFFIXES <- c("jr", "sr", "ii", "iii", "iv", "v")
+NAME_PARTICLES <- c("de", "del", "della", "la", "las", "los", "da", "di", "van", "von", "der", "st", "le", "mac")
+last_name_key <- function(name) {
+  vapply(name, function(n) {
+    if (is.na(n)) return(NA_character_)
+    w <- strsplit(trimws(n), "\\s+")[[1]]
+    bare <- tolower(gsub("[.,]", "", w))
+    while (length(w) > 1 && bare[length(bare)] %in% NAME_SUFFIXES) { w <- w[-length(w)]; bare <- bare[-length(bare)] }
+    i <- length(w)
+    while (i > 2 && bare[i - 1] %in% NAME_PARTICLES) i <- i - 1
+    paste(bare[i:length(bare)], collapse = " ")
+  }, character(1), USE.NAMES = FALSE)
+}
+
+# "Name, Triple-A 2025": names the sidebar's pitcher on pages that show one pitcher.
+pitcher_heading <- function(pitchers, s) {
+  p <- pitchers[pitchers$pitcher == s$pitcher & pitchers$level == s$level & pitchers$season == s$season, ]
+  if (nrow(p) == 0) return(NULL)
+  h2(class = "pv-title", sprintf("%s, %s %d", ifelse(is.na(p$name[1]), paste("Pitcher", p$pitcher[1]), p$name[1]),
+                                 LEVEL_LABELS[[s$level]], s$season))
 }
 
 pitcher_label <- function(p) sprintf("%s (%s)", ifelse(is.na(p$name), paste("ID", p$pitcher), p$name), p$team_abbrev)
@@ -30,9 +54,9 @@ sidebarUI <- function(id) {
     selectInput(ns("team"), "Team", choices = "All"),
     selectizeInput(ns("pitcher"), "Pitcher", choices = NULL),
     radioButtons(ns("side"), "Batter side", c("All", "L", "R"), inline = TRUE),
-    sliderInput(ns("min_pitches"), "Min pitches (pitch type)", min = 0, max = 200, value = 20, step = 10),
+    sliderInput(ns("min_pitches"), "Min pitches (pitch type)", min = 0, max = 200, value = 0, step = 10),
     radioButtons(ns("scale"), "Grade scale", c("Per pitch type" = "type", "Global" = "global"), inline = TRUE),
-    helpText("Grades: 20-80, 50 = average. Ranges are 80% intervals.")
+    helpText("Grades: 20-80, 50 = average. Ranges are 90% intervals.")
   )
 }
 
@@ -67,7 +91,7 @@ sidebarServer <- function(id, outputs) {
       current <- suppressWarnings(as.integer(input$pitcher))
       sel <- if (!is.null(want) && want %in% p$pitcher) want
              else if (length(current) == 1 && !is.na(current) && current %in% p$pitcher) current   # keep him
-             else p$pitcher[1]
+             else p$pitcher[which.max(p$pitches)]   # default: his team's busiest pitcher
       set_pitcher_choices(session, p, sel)
       if (!is.null(want) && want %in% p$pitcher) target <<- NULL
     }, ignoreNULL = FALSE)

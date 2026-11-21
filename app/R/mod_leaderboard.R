@@ -34,7 +34,7 @@ leaderboardUI <- function(id) {
       selectInput(ns("level"), "Level", c("MLB" = "MLB", "Triple-A" = "AAA", "Both" = "Both")),
       selectInput(ns("season"), "Season", choices = NULL),
       selectInput(ns("team"), "Team", choices = "All"),
-      sliderInput(ns("min_pitches"), "Min total pitches", min = 0, max = 2000, value = 300, step = 50, ticks = FALSE)),
+      sliderInput(ns("min_pitches"), "Min total pitches", min = 0, max = 2000, value = 0, step = 50, ticks = FALSE)),
     p(class = "pv-note", "Overall grades and Stuff (S) and Location (L) by pitch type. Click a row to open that pitcher."),
     bslib::card(fill = FALSE, bslib::card_body(fillable = FALSE, DT::DTOutput(ns("table"), height = "auto"))))
 }
@@ -54,13 +54,13 @@ leaderboardServer <- function(id, outputs, sel, parent = NULL) {
     }) %>% bindEvent(input$level, input$season)
     # Only the grade scale matters here; a pitcher change elsewhere must not rebuild the
     # table (that would reset its sort and page). A reactiveVal ignores same-value sets.
-    scale <- reactiveVal("global")
+    scale <- reactiveVal(NULL)   # set from the sidebar before the first build, so no startup flip
     observe({
-      v <- tryCatch(sel$state()$scale, error = function(e) NULL) %||% "global"
+      v <- sel$state()$scale %||% "global"   # waits (silently) until the sidebar is ready
       if (!identical(v, isolate(scale()))) scale(v)
     })
     board <- reactive({
-      req(input$season, input$team)
+      req(input$season, input$team, scale())
       leaderboard_table(outputs$grades, outputs$pitchers, input$level, as.integer(input$season), input$team,
                         input$min_pitches, scale())
     })

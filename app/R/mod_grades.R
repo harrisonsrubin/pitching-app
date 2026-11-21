@@ -1,4 +1,4 @@
-# Grades page: the selected pitcher's grades by pitch type, with 80% ranges, pitch
+# Grades page: the selected pitcher's grades by pitch type, with 90% ranges, pitch
 # metrics and expected component rates.
 
 HEADSHOT_URL <- "https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:silo:current.png,q_100/v1/people/%d/headshot/silo/current"
@@ -6,7 +6,9 @@ HEADSHOT_URL <- "https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_peopl
 fmt_num <- function(x, digits = 1) ifelse(is.na(x) | is.nan(x), "", formatC(x, digits = digits, format = "f"))
 fmt_pct <- function(x) ifelse(is.na(x) | is.nan(x), "", sprintf("%.1f%%", 100 * x))
 
-grade_cell <- function(value, lo, hi) ifelse(is.na(value), "", sprintf("%d (%d–%d)", round(value), round(lo), round(hi)))
+grade_cell <- function(value, lo, hi) {
+  ifelse(is.na(value), "", sprintf("%d (%d–%d)", round(clamp_grade(value)), round(clamp_grade(lo)), round(clamp_grade(hi))))
+}
 
 facet_grade <- function(g, facet, scale) {
   f <- g[g$facet == facet, ]
@@ -14,7 +16,7 @@ facet_grade <- function(g, facet, scale) {
   value <- ifelse(use_type, f$grade_type, f$grade_global)
   shift <- ifelse(use_type, f$grade_type - f$grade_global, 0)
   tibble::tibble(pitch_type = f$pitch_type, n_graded = f$n, value = value,
-                 cell = grade_cell(value, f$grade_lo80 + shift, f$grade_hi80 + shift))
+                 cell = grade_cell(value, f$grade_lo90 + shift, f$grade_hi90 + shift))
 }
 
 grades_table <- function(grades, components, pitcher, level, season, summary, scale, min_pitches = 0) {
@@ -49,7 +51,7 @@ gradesUI <- function(id) {
   ns <- NS(id)
   tagList(uiOutput(ns("header")), uiOutput(ns("empty")),
           bslib::card(fill = FALSE, bslib::card_body(fillable = FALSE, DT::DTOutput(ns("table"), height = "auto"))),
-          p(class = "pv-note", "Grades are 20-80 (50 is average) with 80% ranges. Horizontal break and release side are from the pitcher's view. Expected rates come from the component models."))
+          p(class = "pv-note", "Grades are 20-80 (50 is average) with 90% ranges. Horizontal break and release side are from the pitcher's view. Expected rates come from the component models."))
 }
 
 gradesServer <- function(id, outputs, sel, display) {
@@ -69,7 +71,7 @@ gradesServer <- function(id, outputs, sel, display) {
         if (nrow(g) == 0 || is.na(g$grade_global)) return(NULL)
         div(class = "pv-grade", style = sprintf("background:%s;", grade_color(g$grade_global)),
             div(class = "pv-num", round(g$grade_global)),
-            div(class = "pv-range", sprintf("%d–%d", round(g$grade_lo80), round(g$grade_hi80))),
+            div(class = "pv-range", sprintf("%d–%d", round(g$grade_lo90), round(g$grade_hi90))),
             div(class = "pv-tool", label))
       }
       div(class = "pv-card",

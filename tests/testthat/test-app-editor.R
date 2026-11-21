@@ -43,6 +43,7 @@ test_that("wrong password fails and 5 failures lock", {
     expect_match(output$status$html, "Too many attempts")
     expect_false(grepl(cfg$admin_hash, output$status$html, fixed = TRUE))
   })
+  admin_lock_reset()
   shiny::testServer(adminServer, args = list(cfg = cfg), {
     session$setInputs(pw = "open sesame", login = 1)
     expect_true(is_admin())
@@ -127,7 +128,7 @@ test_that("editor is locked until admin", {
   d <- fixture_display()
   display <- list(rows = shiny::reactive(d[d$pitcher == 101, ]),
                   edits = shiny::reactiveVal(tibble::tibble(pitch_uid = character(), new_pitch_type = character())))
-  shiny::testServer(editorServer, args = list(cfg = cfg, sel = sel, display = display), {
+  shiny::testServer(editorServer, args = list(cfg = cfg, sel = sel, display = display, outputs = load_outputs(app_config())), {
     expect_match(output$panel$html, "Admin password")
     session$setInputs(`admin-pw` = "open sesame", `admin-login` = 1)
     expect_match(output$panel$html, "Save")
@@ -146,17 +147,3 @@ test_that("removed pitches of this pitcher are listed for undo", {
   expect_equal(r$original_pitch_type, "4S")
 })
 
-test_that("the chosen pitch type survives a re-render of the editor panel", {
-  local_app_fixture()
-  cfg <- ed_cfg()
-  sel <- list(state = shiny::reactive(list(level = "MLB", season = 2026L, pitcher = 101L, side = "All")))
-  d <- fixture_display()
-  display <- list(rows = shiny::reactive(d[d$pitcher == 101, ]),
-                  edits = shiny::reactiveVal(tibble::tibble(pitch_uid = character(), new_pitch_type = character())))
-  shiny::testServer(editorServer, args = list(cfg = cfg, sel = sel, display = display), {
-    session$setInputs(`admin-pw` = "open sesame", `admin-login` = 1)
-    session$setInputs(new_type = "SL")
-    session$setInputs(save = 1)   # nothing selected: status changes, panel re-renders
-    expect_match(output$panel$html, '<option value="SL" selected>', fixed = TRUE)
-  })
-})

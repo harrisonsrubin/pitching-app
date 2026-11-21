@@ -169,7 +169,7 @@ Stuff + Location features, plus previous-pitch differences (tunneling and sequen
 ### 7.6 Grades
 - Pitcher × pitch type × season mean xRV, with hierarchical shrinkage: a pitcher effect shared across his pitches plus a pitcher-by-pitch-type effect, so command shared across an arsenal informs low-sample pitches.
 - 20-80 scale anchored to fixed reference seasons (2023–2025); the unit is the estimated spread of true talent. Per-pitch-type and global anchors.
-- Every grade carries an interval.
+- Every grade carries a 90% interval. Grades and intervals are shown on the 20-80 scale only (values beyond are shown as 20 or 80).
 - Stickiness is measured on season-only grades (no carry-over prior) so it isn't inflated by construction.
 
 ## 8. Projection, value, and decisions
@@ -256,7 +256,7 @@ Pre-arbitration pitchers carry the largest surplus, and many pitched in Triple-A
 - **Rolling:** each pitch type's Stuff / Location / Pitching grade from its last 100 pitches up to each game (from 50 pitches on), on the season grades' scale, plus rolling velocity.
 - Loads published outputs at startup; pitch-level display data loads per pitcher and season from the private store.
 - A level filter (MLB / Triple-A / both).
-- **Admin editing:** read-only by default; an admin password unlocks the Pitch-Type Editor and the Contracts editor; saving commits the CSV to this repo through the GitHub API with a narrowly scoped token. Edits apply immediately in the session; the `rescore` workflow rebuilds each edited season (about 30 minutes).
+- **Admin editing:** read-only by default; an admin password unlocks the Pitch-Type Editor (its own lasso movement plot beside the retag controls) and the Contracts editor; five wrong passwords lock the login for 15 minutes; saving commits the CSV to this repo through the GitHub API with a narrowly scoped token. Edits apply immediately in the session; the `rescore` workflow rebuilds each edited season (about 30 minutes).
 - **Hosting:** Posit Connect Cloud, deploying `app/` from the **`deploy` branch**; Hugging Face Spaces as a fallback. The `deploy` workflow fast-forwards `deploy` to `main` only when `app/` or `renv.lock` changes, so tag saves (commits to `main`) never restart the app. Because the app commits to `main`, run `git pull` before committing locally.
 
 ## 11. Repo layout
@@ -315,7 +315,7 @@ Rscript scripts/train_models.R forward            # train 2023–2025, test 2026
 Rscript scripts/train_models.R oof                # 8 models x 5 pitcher folds (~40 min)
 Rscript scripts/score_pitches.R MLB 2020 2026     # every pitch scored by a model that never saw its pitcher
 Rscript scripts/score_pitches.R AAA 2023 2026
-Rscript scripts/build_grades.R                    # 20-80 grades + 80% intervals + component rates (~15 min)
+Rscript scripts/build_grades.R                    # 20-80 grades + 90% intervals + component rates (~15 min)
 Rscript scripts/fetch_fangraphs.R 2020 2026       # benchmarks (private store only)
 Rscript scripts/build_scorecard.R final           # scorecard/p1.md + chart
 ```

@@ -18,6 +18,18 @@ grade_color <- function(x) {
   GRADE_COLORS[i]
 }
 
+# The scale runs 20-80; nothing outside it is ever shown.
+clamp_grade <- function(x) pmin(pmax(x, 20), 80)
+
+# Plotly colorscale for a 20-80 range that steps at GRADE_BINS with GRADE_COLORS.
+grade_colorscale <- function() {
+  breaks <- c(20, rev(GRADE_BINS), 80)
+  cols <- rev(GRADE_COLORS)
+  pos <- (breaks - 20) / 60
+  unlist(lapply(seq_along(cols), function(i) list(list(pos[i], cols[i]), list(pos[i + 1], cols[i]))),
+         recursive = FALSE)
+}
+
 PLATE_HALF_WIDTH <- 0.83
 LEVELS <- c("MLB", "AAA")
 LEVEL_LABELS <- c(MLB = "MLB", AAA = "Triple-A")

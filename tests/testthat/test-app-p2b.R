@@ -108,3 +108,9 @@ test_that("rolling windows are pulled toward the type average in proportion to t
 test_that("rolling returns nothing (not an error) when the anchors are missing", {
   expect_equal(nrow(rolling_grades(roll_rows(), NULL, "stuff")), 0)
 })
+
+test_that("rolling grades stay inside 20-80", {
+  hot <- roll_rows(); hot$stuff_xrv <- -1                 # absurdly good, no noise
+  r <- rolling_grades(hot, anchors_fx(), "stuff", window = 100, min_n = 50)
+  expect_true(all(r$value == 80))
+})

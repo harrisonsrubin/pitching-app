@@ -38,11 +38,9 @@ commandUI <- function(id) {
   ns <- NS(id)
   tagList(
     h2(class = "pv-title", "Command"),
-    bslib::layout_columns(
-      selectInput(ns("level"), "Level", c("MLB" = "MLB", "Triple-A" = "AAA")),
-      selectInput(ns("season"), "Season", choices = NULL),
-      selectInput(ns("team"), "Team", choices = "All"),
-      sliderInput(ns("min_pitches"), "Min total pitches", min = 0, max = 2000, value = 500, step = 50, ticks = FALSE)),
+    bslib::layout_columns(col_widths = c(4, 8),
+      sliderInput(ns("min_pitches"), "Min total pitches", min = 0, max = 2000, value = 0, step = 50, ticks = FALSE),
+      uiOutput(ns("scope"))),
     p(class = "pv-note", "Share of pitches by zone, sized to each batter's own strike zone: heart (middle two-thirds), shadow (the edges, inside and out), chase, and waste. Location is the tested 20-80 grade."),
     bslib::card(fill = FALSE, bslib::card_body(fillable = FALSE, DT::DTOutput(ns("table"), height = "auto"))),
     h2(class = "pv-title", "Tunneling"),
@@ -56,19 +54,16 @@ TUNNEL_FT_APP <- 23.8
 
 commandServer <- function(id, outputs, sel) {
   moduleServer(id, function(input, output, session) {
-    observe({
-      s <- sort(unique(outputs$pitchers$season[outputs$pitchers$level == input$level]), decreasing = TRUE)
-      updateSelectInput(session, "season", choices = s, selected = s[1])
-    }) %>% bindEvent(input$level)
-    observe({
-      req(input$season)
-      p <- outputs$pitchers[outputs$pitchers$level == input$level & outputs$pitchers$season == as.integer(input$season), ]
-      updateSelectInput(session, "team", choices = c("All", sort(unique(unlist(strsplit(p$teams, ","))))))
-    }) %>% bindEvent(input$level, input$season)
+    # The whole page follows the sidebar's level, season and team.
+    output$scope <- renderUI({
+      s <- sel$state()
+      p(class = "pv-note", sprintf("%s %d, %s (set in the sidebar).", LEVEL_LABELS[[s$level]], s$season,
+                                   if (identical(s$team %||% "All", "All")) "all teams" else s$team))
+    })
     board <- reactive({
-      req(input$season, input$team)
-      command_table(outputs$command, outputs$grades, outputs$pitchers, input$level, as.integer(input$season),
-                    input$team, input$min_pitches)
+      s <- sel$state()
+      command_table(outputs$command, outputs$grades, outputs$pitchers, s$level, s$season,
+                    s$team %||% "All", input$min_pitches %||% 0)
     })
     output$table <- DT::renderDT({
       t <- board()
@@ -86,14 +81,14 @@ commandServer <- function(id, outputs, sel) {
       s <- sel$state()
       tunnel_pairs(outputs$tunnel, s$pitcher, s$level, s$season, s$side %||% "All")
     })
-    output$tunnel_head <- renderUI({
-      s <- sel$state()
-      p <- outputs$pitchers[outputs$pitchers$pitcher == s$pitcher & outputs$pitchers$level == s$level &
-                              outputs$pitchers$season == s$season, ]
-      if (nrow(p)) p(sprintf("%s, %s %d (the pitcher selected in the sidebar)", p$name, LEVEL_LABELS[[s$level]], s$season))
-    })
+    output$tunnel_head <- renderUI(pitcher_heading(outputs$pitchers, sel$state()))
     output$tunnel_message <- renderUI({
-      if (nrow(pairs()) == 0) div(class = "alert alert-info", "This pitcher has only one pitch type with 20 or more pitches to these batters, so there is nothing to compare.")
+      if (nrow(pairs()) > 0) return(NULL)
+      s <- sel$state()
+      has_any <- any(outputs$tunnel$pitcher == s$pitcher & outputs$tunnel$level == s$level & outputs$tunnel$season == s$season)
+      div(class = "alert alert-info", if (has_any)
+        "This pitcher has only one pitch type with 20 or more pitches to these batters, so there is nothing to compare."
+        else "No tunnel data for this pitcher: no pitch type reached 20 pitches with full tracking.")
     })
     output$tunnels <- DT::renderDT({
       t <- pairs(); req(nrow(t) > 0)

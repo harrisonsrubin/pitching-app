@@ -7,6 +7,9 @@ leaderboard_table <- function(grades, pitchers, level, season, team, min_pitches
   p <- pitchers[pitchers$level %in% lv & pitchers$season == season & pitchers$pitches >= min_pitches, ]
   if (!identical(team, "All")) p <- p[vapply(strsplit(p$teams, ",", fixed = TRUE), function(t) team %in% t, TRUE), ]
   g <- grades[grades$level %in% lv & grades$season == season & grades$half == "full", ]
+  if (nrow(p) == 0 || nrow(g) == 0) return(tibble::tibble(pitcher = integer(), name = character(), team = character(),
+                                                           level = character(), pitches = integer(), stuff = numeric(),
+                                                           location = numeric(), pitching = numeric()))
   g$value <- if (scale == "type") dplyr::coalesce(g$grade_type, g$grade_global) else g$grade_global
   overall <- g[g$pitch_type == "ALL", ] %>%
     dplyr::select(level, pitcher, facet, grade_global) %>%
@@ -49,10 +52,17 @@ leaderboardServer <- function(id, outputs, sel, parent = NULL) {
       p <- outputs$pitchers[outputs$pitchers$level %in% lv & outputs$pitchers$season == as.integer(input$season), ]
       updateSelectInput(session, "team", choices = c("All", sort(unique(unlist(strsplit(p$teams, ","))))))
     }) %>% bindEvent(input$level, input$season)
+    # Only the grade scale matters here; a pitcher change elsewhere must not rebuild the
+    # table (that would reset its sort and page). A reactiveVal ignores same-value sets.
+    scale <- reactiveVal("global")
+    observe({
+      v <- tryCatch(sel$state()$scale, error = function(e) NULL) %||% "global"
+      if (!identical(v, isolate(scale()))) scale(v)
+    })
     board <- reactive({
       req(input$season, input$team)
       leaderboard_table(outputs$grades, outputs$pitchers, input$level, as.integer(input$season), input$team,
-                        input$min_pitches, tryCatch(sel$state()$scale, error = function(e) "global"))
+                        input$min_pitches, scale())
     })
     output$table <- DT::renderDT({
       t <- board()

@@ -108,3 +108,38 @@ test_that("a season with ingested day files is treated as current and compacted,
   store_write(tibble::tibble(a = 1), "raw/statcast/MLB/2027/2027-03-26.parquet")
   expect_true(has_day_files("MLB", 2027L))
 })
+
+test_that("rescore takes the manual seasons input through env and validates it; last-success lookup is on main", {
+  y <- wf("rescore.yml")
+  r <- wf_runs(y)
+  expect_false(grepl("${{ github.event.inputs.seasons }}", r, fixed = TRUE))   # never pasted into the shell
+  step <- Filter(function(s) grepl("changed_seasons.R", s$run %||% ""), y$jobs$rescore$steps)[[1]]
+  expect_equal(step$env$SEASONS_INPUT, "${{ github.event.inputs.seasons }}")
+  expect_match(r, "=~ ^[0-9]{4}(\\ [0-9]{4})*$", fixed = TRUE)   # whole-string bash match, not grep
+  expect_match(r, "--branch main", fixed = TRUE)
+})
+
+test_that("deploy runs queue instead of racing", {
+  y <- wf("deploy.yml")
+  expect_equal(y$concurrency$group, "deploy")
+  expect_false(isTRUE(y$concurrency[["cancel-in-progress"]]))
+})
+
+test_that("the rescore seasons check rejects multi-line and malformed input", {
+  y <- wf("rescore.yml")
+  run <- Filter(function(s) grepl("changed_seasons.R", s$run %||% ""), y$jobs$rescore$steps)[[1]]$run
+  lines <- strsplit(run, "\n")[[1]]
+  start <- grep("SEASONS_INPUT", lines)[2]   # the validation block after the -n test
+  check <- paste(lines[start:(start + 2)], collapse = "\n")
+  ok <- function(input) {
+    f <- tempfile(fileext = ".sh")
+    writeLines(c("#!/bin/bash", check, "echo PASSED"), f)
+    out <- suppressWarnings(system2("bash", f, stdout = TRUE, stderr = TRUE, env = paste0("SEASONS_INPUT=", shQuote(input))))
+    any(out == "PASSED")
+  }
+  expect_true(ok("2025 2026"))
+  expect_true(ok("2026"))
+  expect_false(ok("2025\nsystem('id')"))
+  expect_false(ok("2025;id"))
+  expect_false(ok("25"))
+})

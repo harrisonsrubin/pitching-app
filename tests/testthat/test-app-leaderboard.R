@@ -72,3 +72,27 @@ test_that("select() moves to the pitcher even when level, season and team are un
     expect_equal(picked$sel, 103L)
   })
 })
+
+test_that("a season with pitchers but no grades gives an empty leaderboard, not an error", {
+  o <- lb_fx()
+  g <- o$grades[0, ]
+  t <- leaderboard_table(g, o$pitchers, "MLB", 2026L, "All", 0, "global")
+  expect_equal(nrow(t), 0)
+})
+
+test_that("the leaderboard does not rebuild when only the selected pitcher changes", {
+  o <- lb_fx()
+  calls <- 0L
+  real <- leaderboard_table
+  local_global_binding(leaderboard_table = function(...) { calls <<- calls + 1L; real(...) })
+  pv <- shiny::reactiveVal(101L)
+  sel <- list(state = shiny::reactive(list(level = "MLB", season = 2026L, team = "All", pitcher = pv(), scale = "global")),
+              select = function(...) NULL)
+  shiny::testServer(leaderboardServer, args = list(outputs = o, sel = sel, parent = NULL), {
+    session$setInputs(level = "MLB", season = "2026", team = "All", min_pitches = 0)
+    board(); n1 <- calls
+    pv(103L); session$flushReact()
+    board()
+    expect_equal(calls, n1)
+  })
+})

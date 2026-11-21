@@ -18,6 +18,9 @@ ui <- page_navbar(
   nav_panel("Movement", movementUI("movement")),
   nav_panel("Location", locationUI("location")),
   nav_panel("Leaderboard", leaderboardUI("leaderboard")),
+  nav_panel("Stuff Map", stuffmapUI("stuffmap")),
+  nav_panel("Command & Tunneling", commandUI("command")),
+  nav_panel("Rolling", rollingUI("rolling")),
   nav_panel("Pitch-Type Editor", editorUI("editor")),
   nav_panel("Scorecard", scorecardUI("scorecard"))
 )
@@ -29,6 +32,9 @@ server <- function(input, output, session) {
   movementServer("movement", outputs, sel, display)
   locationServer("location", sel, display)
   leaderboardServer("leaderboard", outputs, sel, session)
+  stuffmapServer("stuffmap", outputs, sel)
+  commandServer("command", outputs, sel)
+  rollingServer("rolling", outputs, sel, display)
   editorServer("editor", cfg, sel, display)
   scorecardServer("scorecard", outputs)
 }

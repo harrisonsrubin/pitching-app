@@ -2917,7 +2917,7 @@
   },
   "files": {
     "app.R": {
-      "checksum": "0d234014d29b5b2c3dd6b226c42cc2aa"
+      "checksum": "0e163f5e5ef5015705ae021934e97963"
     },
     "R/admin.R": {
       "checksum": "f4602f3f282188d03d5ce4fc7aaa9a12"
@@ -2926,25 +2926,31 @@
       "checksum": "5d1e3025318ff71855077138431d2d92"
     },
     "R/data.R": {
-      "checksum": "d88a10b56764dc6a9445f348e88c16f4"
+      "checksum": "943b7d3b019d2dc235096e0ac60dc00f"
     },
     "R/github_corrections.R": {
       "checksum": "4423d84895e786a9aabf206613d7eb3d"
+    },
+    "R/mod_command.R": {
+      "checksum": "c456fad8dd60410dabb368570a3b2c7d"
     },
     "R/mod_editor.R": {
       "checksum": "12571ac9cd71d9006cb415744f9aca6a"
     },
     "R/mod_grades.R": {
-      "checksum": "20f542dc2a32f0b40eb67b7965840367"
+      "checksum": "4af2244f843d9475575a12e80ee9d090"
     },
     "R/mod_leaderboard.R": {
-      "checksum": "f9a4daa988285633befa03e3dea7b3ca"
+      "checksum": "1d43a6ec220594a028237ef1c1d11b89"
     },
     "R/mod_location.R": {
-      "checksum": "f8193ca902f0c13ccaa6e58a2e5eb0e1"
+      "checksum": "fc5d0702c7eddc4fd7120b7da43447c0"
     },
     "R/mod_movement.R": {
-      "checksum": "af2b332c238c56effeaa2c3178d19dd9"
+      "checksum": "0fe10db03823c7e42a91601cc8acd0e5"
+    },
+    "R/mod_rolling.R": {
+      "checksum": "a52c32b2bbd63c1ae4ee3a399842690a"
     },
     "R/mod_scorecard.R": {
       "checksum": "8228ded2b9103bc276b855bee6e6a4e3"
@@ -2952,8 +2958,14 @@
     "R/mod_sidebar.R": {
       "checksum": "c6d9f8ead3b4e436b5ca337a0e173de2"
     },
+    "R/mod_stuffmap.R": {
+      "checksum": "b4c9d66b87c94059e79270ce44f7eee7"
+    },
     "R/pitch_summary.R": {
-      "checksum": "76a76f6dc4f8c2dcb7563b9a0a325a7f"
+      "checksum": "235c184c19bce653831f264af949c245"
+    },
+    "R/theme.R": {
+      "checksum": "a14bf953a598fc816ecb8359c3137dc1"
     }
   },
   "users": null

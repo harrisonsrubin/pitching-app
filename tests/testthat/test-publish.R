@@ -7,11 +7,11 @@ gh_recorder <- function(status = 0L) {
 
 test_that("outputs contain no pitch-level file", {
   k <- outputs_for("MLB", 2026L)
-  expect_length(k, 5)
+  expect_true(length(k) >= 5)
   expect_true(all(startsWith(k, "outputs/")))
   expect_false(any(grepl("display", k)))
-  expect_setequal(basename(k), c("grades_MLB_2026.parquet", "components_MLB_2026.parquet", "pitchers_MLB_2026.parquet",
-                                 "movement_ref_MLB_2026.parquet", "pitch_pctl_MLB_2026.parquet"))
+  expect_true(all(c("grades_MLB_2026.parquet", "components_MLB_2026.parquet", "pitchers_MLB_2026.parquet",
+                    "movement_ref_MLB_2026.parquet", "pitch_pctl_MLB_2026.parquet") %in% basename(k)))
 })
 
 test_that("display never goes to the public repo", {
@@ -35,7 +35,7 @@ test_that("outputs go to the app repo's outputs release with the app token", {
   up <- Filter(function(c) c$args[2] == "upload", rec$calls)
   expect_length(up, 1)
   expect_true(all(c("outputs", "me/pitching-app", "--clobber") %in% up[[1]]$args))
-  expect_equal(sum(grepl("\\.parquet$", up[[1]]$args)), 5)
+  expect_equal(sum(grepl("\\.(parquet|csv)$", up[[1]]$args)), length(outputs_for("MLB", 2026L)))
   expect_equal(up[[1]]$token, "tok")
 })
 
@@ -62,4 +62,12 @@ test_that("display publishing refuses a public or app repo", {
   local_global_binding(gh_output = function(args) "true")
   expect_silent(assert_private_repo("me/pitching-data", "me/pitching-app"))
   expect_match(paste(readLines(file.path(repo_root(), "scripts", "publish.R")), collapse = "\n"), "assert_private_repo")
+})
+
+test_that("outputs include the P2b aggregates and the grade anchors, still nothing pitch-level", {
+  k <- outputs_for("MLB", 2026L)
+  expect_length(k, 9)
+  expect_true(all(c("outputs/profiles_MLB_2026.parquet", "outputs/command_MLB_2026.parquet",
+                    "outputs/tunnel_MLB_2026.parquet", "outputs/grade_anchors.csv") %in% k))
+  expect_false(any(grepl("display", k)))
 })

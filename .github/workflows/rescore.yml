@@ -43,12 +43,17 @@ jobs:
       - name: Tests
         run: Rscript tests/testthat.R
       - name: Rebuild and publish edited seasons
+        env:
+          SEASONS_INPUT: ${{ github.event.inputs.seasons }}
         run: |
-          if [ -n "${{ github.event.inputs.seasons }}" ]; then
-            SEASONS="${{ github.event.inputs.seasons }}"
+          if [ -n "$SEASONS_INPUT" ]; then
+            if ! [[ "$SEASONS_INPUT" =~ ^[0-9]{4}(\ [0-9]{4})*$ ]]; then
+              echo "seasons must look like: 2025 2026"; exit 1
+            fi
+            SEASONS="$SEASONS_INPUT"
           else
             BASE=$(GH_TOKEN=${{ github.token }} gh run list --repo ${{ github.repository }} --workflow rescore.yml \
-                     --status success --limit 1 --json headSha --jq '.[0].headSha // empty')
+                     --branch main --status success --limit 1 --json headSha --jq '.[0].headSha // empty')
             git cat-file -e "${BASE}^{commit}" 2>/dev/null || BASE=${{ github.event.before }}
             SEASONS=$(Rscript scripts/changed_seasons.R $BASE ${{ github.sha }})
           fi

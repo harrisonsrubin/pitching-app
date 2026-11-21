@@ -63,3 +63,12 @@ test_that("single-pitch-type pitcher renders", {
     expect_match(output$header$html, "Traded Two")
   })
 })
+
+test_that("a pitcher without grades gets a message instead of an empty table", {
+  o <- fx()
+  sel <- list(state = shiny::reactive(list(level = "MLB", season = 2026L, pitcher = 999L, side = "All", scale = "type", min_pitches = 0)))
+  display <- list(rows = shiny::reactive(NULL))
+  shiny::testServer(gradesServer, args = list(outputs = o, sel = sel, display = display), {
+    expect_match(output$empty$html, "No grades")
+  })
+})

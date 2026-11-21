@@ -87,14 +87,26 @@ load_outputs <- function(cfg) {
     m <- regmatches(basename(p), regexec("movement_ref_(MLB|AAA)_(\\d{4})", basename(p)))[[1]]
     tibble::as_tibble(arrow::read_parquet(p)) %>% dplyr::mutate(level = m[2], season = as.integer(m[3]))
   }))
+  tagged <- function(prefix) {
+    f <- list.files(dir, pattern = sprintf("^%s_(MLB|AAA)_\\d{4}\\.parquet$", prefix), full.names = TRUE)
+    dplyr::bind_rows(lapply(f, function(p) {
+      m <- regmatches(basename(p), regexec(sprintf("%s_(MLB|AAA)_(\\d{4})", prefix), basename(p)))[[1]]
+      tibble::as_tibble(arrow::read_parquet(p)) %>% dplyr::mutate(level = m[2], season = as.integer(m[3]))
+    }))
+  }
+  anchors_file <- file.path(dir, "grade_anchors.csv")
   list(grades = read_outputs(dir, "grades"),
+       profiles = tagged("profiles"), command = tagged("command"), tunnel = tagged("tunnel"),
+       anchors = if (file.exists(anchors_file)) readr::read_csv(anchors_file, show_col_types = FALSE,
+                   col_types = readr::cols(facet = "c", scope = "c", pitch_type = "c", mean = "d", unit = "d")) else NULL,
        components = read_outputs(dir, "components"),
        pitchers = read_outputs(dir, "pitchers"),
        movement_ref = mref, pctl = pctl,
        scorecard = list(md = file.path(dir, "scorecard.md"), chart = file.path(dir, "scorecard_chart.png")))
 }
 
-display_bucket <- function(pitcher) as.integer(pitcher %% 32L)
+N_DISPLAY_BUCKETS <- 32L   # must equal the pipeline's N_BUCKETS (R/display.R); a test checks
+display_bucket <- function(pitcher) as.integer(pitcher %% N_DISPLAY_BUCKETS)
 
 # One cache for the whole R process (buckets are the same for every visitor), keeping
 # the most recently used `max` buckets (~11 MB each at most) to bound memory.

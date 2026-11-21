@@ -137,3 +137,9 @@ test_that("public outputs are listed and downloaded without the private-repo tok
   expect_true(all(seen$auth == ""))
   expect_true(any(grepl("releases/download/outputs/scorecard.md$", seen$urls)))
 })
+
+test_that("the app's bucket count matches the pipeline's", {
+  source_app()
+  expect_identical(N_DISPLAY_BUCKETS, N_BUCKETS)
+  expect_identical(display_bucket(645261L), pitcher_bucket(645261L))
+})

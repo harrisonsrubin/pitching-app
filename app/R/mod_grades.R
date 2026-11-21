@@ -47,7 +47,7 @@ grades_table <- function(grades, components, pitcher, level, season, summary, sc
 
 gradesUI <- function(id) {
   ns <- NS(id)
-  tagList(uiOutput(ns("header")),
+  tagList(uiOutput(ns("header")), uiOutput(ns("empty")),
           bslib::card(fill = FALSE, bslib::card_body(fillable = FALSE, DT::DTOutput(ns("table"), height = "auto"))),
           p(class = "pv-note", "Grades are 20-80 (50 is average) with 80% ranges. Horizontal break and release side are from the pitcher's view. Expected rates come from the component models."))
 }
@@ -85,6 +85,10 @@ gradesServer <- function(id, outputs, sel, display) {
       s <- sel$state()
       grades_table(outputs$grades, outputs$components, s$pitcher, s$level, s$season,
                    pitch_summary(display$rows(), s$side), s$scale, s$min_pitches)
+    })
+    output$empty <- renderUI({
+      t <- tbl()
+      if (is.null(t) || nrow(t) == 0) div(class = "alert alert-info", "No grades for this pitcher in this season yet.")
     })
     output$table <- DT::renderDT({
       t <- tbl(); req(t)

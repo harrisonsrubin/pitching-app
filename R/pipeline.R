@@ -36,6 +36,19 @@ build_outputs <- function(level, season, anchors = read_anchors()) {
   f <- store_read(features_key(level, season))
   d <- display_rows(f, x, savant_types(level, season))
   rm(f, x); gc()
+  # P2b aggregates: tunnel positions from each pitch's trajectory (prepared data)
+  tr <- arrow::open_dataset(store_path(prepared_key(level, season))) %>%
+    dplyr::select(pitch_uid, vy0, ay, vx0, ax, vz0, az) %>% dplyr::collect()
+  tr <- dplyr::inner_join(dplyr::select(d, pitch_uid, plate_x, plate_z), tr, by = "pitch_uid")
+  tun <- dplyr::bind_cols(dplyr::select(tr, pitch_uid), tunnel_position(tr))
+  store_write(pitch_profiles(d), profiles_key(level, season))
+  store_write(command_rates(d), command_key(level, season))
+  store_write(tunnel_centroids(dplyr::inner_join(
+    dplyr::select(d, pitch_uid, pitcher, stand, pitch_type, plate_x, plate_z), tun, by = "pitch_uid")),
+    tunnel_key(level, season))
+  dir.create(dirname(store_path(ANCHORS_OUTPUT)), recursive = TRUE, showWarnings = FALSE)
+  file.copy(file.path(repo_root(), "models", "grade_anchors.csv"), store_path(ANCHORS_OUTPUT), overwrite = TRUE)
+  rm(tr, tun); gc()
   sizes <- write_display(level, season, d)
   store_write(movement_ref(d), movement_ref_key(level, season))
   store_write(pitch_percentiles(d), pitch_pctl_key(level, season))

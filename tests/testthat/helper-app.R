@@ -53,6 +53,17 @@ make_app_fixture <- function(dir) {
     out("pitchers_MLB_2026.parquet"))
   arrow::write_parquet(movement_ref(d, min_n = 1), out("movement_ref_MLB_2026.parquet"))
   arrow::write_parquet(pitch_percentiles(d), out("pitch_pctl_MLB_2026.parquet"))
+  arrow::write_parquet(pitch_profiles(d), out("profiles_MLB_2026.parquet"))
+  arrow::write_parquet(command_rates(d), out("command_MLB_2026.parquet"))
+  dt <- d; dt$x_tun <- d$plate_x * 0.5; dt$z_tun <- 3 + (d$plate_z - 2.5) * 0.5
+  arrow::write_parquet(tunnel_centroids(dt, min_n = 5), out("tunnel_MLB_2026.parquet"))
+  readr::write_csv(tibble::tribble(~facet, ~scope, ~pitch_type, ~mean, ~unit,
+    "stuff", "type", "4S", 0, 0.005, "stuff", "type", "SL", 0, 0.005, "stuff", "type", "SNK", 0, 0.005,
+    "stuff", "type", "CH", 0, 0.005, "stuff", "type", "CB", 0, 0.005,
+    "location", "type", "4S", 0, 0.005, "location", "type", "SL", 0, 0.005, "location", "type", "SNK", 0, 0.005,
+    "location", "type", "CH", 0, 0.005, "location", "type", "CB", 0, 0.005,
+    "pitching", "type", "4S", 0, 0.005, "pitching", "type", "SL", 0, 0.005, "pitching", "type", "SNK", 0, 0.005,
+    "pitching", "type", "CH", 0, 0.005, "pitching", "type", "CB", 0, 0.005), out("grade_anchors.csv"))
   writeLines(c("# P1 scorecard", "", "## Success criteria", "", "Grades measure the pitch.", "",
                "- PASS — Stuff (ours) is at least as sticky as Stuff+", "",
                "## Stickiness", "", "| metric | n | pearson |", "|---|---|---|", "| Stuff (ours) | 1,073 | 0.865 |", "",

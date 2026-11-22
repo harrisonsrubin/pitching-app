@@ -91,7 +91,7 @@ body { font-variant-numeric: tabular-nums; }
 .pv-bar-empty .pv-bar-fill { border-color: transparent; }
 .pv-bar-x { font-size: .68rem; color: %5$s; margin-top: 3px; border-top: 1px solid %4$s; width: 100%%; text-align: center; padding-top: 2px; }
 .pv-bet-note { font-size: .75rem; color: %5$s; margin-top: 6px; }
-.pv-stats { display: grid; grid-template-columns: repeat(4, minmax(84px, 1fr)); gap: 10px; }
+.pv-stats { display: grid; grid-template-columns: repeat(3, minmax(96px, 1fr)); gap: 10px; }
 .pv-stat { background: %6$s; border: 1px solid %4$s; border-radius: 6px; padding: 10px 12px; }
 .pv-stat-label { font-size: .78rem; font-weight: 600; color: %5$s; }
 .pv-stat-value { font-family: '%3$s', sans-serif; font-weight: 700; font-size: 1.9rem; line-height: 1.05; color: %1$s; margin-top: 2px; }

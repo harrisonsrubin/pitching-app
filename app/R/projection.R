@@ -1,6 +1,8 @@
 # Projection card on Grades, plus Player and League Projections pages
 
 # Player projections
+IP_TIP <- "Expected MLB innings next season, counting the chance of injury or not reaching MLB; range is 90%."
+WAR_TIP <- "Expected wins above replacement next season from projected ERA and innings; range is 90% of season outcomes."
 STEP_TIP <- "Chance his true-talent ERA next season is at least 0.75 runs better (Step forward) or worse (Step back) than today, about a full grade."
 LUCK_TIP <- "Actual ERA minus the ERA his true-talent rates predict. Positive means results ran worse than his talent (unlucky)."
 
@@ -76,6 +78,8 @@ projection_card <- function(proj, luck, pitcher, level, season) {
       shiny::div(class = "pv-stats",
         proj_stat("ERA", sprintf("%.2f", h1$era), sprintf("%.2f–%.2f", h1$era_lo, h1$era_hi)),
         proj_stat("FIP", sprintf("%.2f", h1$fip), sprintf("%.2f–%.2f", h1$fip_lo, h1$fip_hi)),
+        if ("ip" %in% names(h1)) proj_stat("Innings", sprintf("%.0f", h1$ip), sprintf("%.0f–%.0f", h1$ip_lo, h1$ip_hi), IP_TIP),
+        if ("war" %in% names(h1)) proj_stat("WAR", sprintf("%.1f", h1$war), sprintf("%.1f to %.1f", h1$war_lo, h1$war_hi), WAR_TIP),
         proj_stat("Step forward", sprintf("%.0f%%", 100 * h1$step_forward), "0.75+ ERA better", STEP_TIP),
         proj_stat("Step back", sprintf("%.0f%%", 100 * h1$step_back), "0.75+ ERA worse", STEP_TIP))),
     luck_row)
@@ -88,7 +92,9 @@ outlook_table <- function(p) {
                  `Season range` = sprintf("%.2f–%.2f", p$era_out_lo, p$era_out_hi),
                  FIP = rng(p$fip, p$fip_lo, p$fip_hi),
                  `True talent` = sprintf("%d (%d–%d)", round(p$tt_grade), round(p$tt_lo), round(p$tt_hi)),
-                 `Home-park ERA` = sprintf("%.2f", p$era_home))
+                 `Home-park ERA` = sprintf("%.2f", p$era_home),
+                 IP = if ("ip" %in% names(p)) sprintf("%.0f (%.0f–%.0f)", p$ip, p$ip_lo, p$ip_hi) else NA_character_,
+                 WAR = if ("war" %in% names(p)) sprintf("%.1f (%.1f to %.1f)", p$war, p$war_lo, p$war_hi) else NA_character_)
 }
 
 # Player Projections page
@@ -153,7 +159,8 @@ projectionServer <- function(id, outputs, sel) {
 
 # Next-season projections for every pitcher, filtered by basis, team and innings
 projections_table <- function(proj, pitchers, basis = "All", team = "All", min_ip = 0) {
-  empty <- tibble::tibble(pitcher = integer(), name = character(), team = character(), basis = character(), ip = numeric(),
+  empty <- tibble::tibble(pitcher = integer(), name = character(), team = character(), basis = character(), role = character(),
+                          ip_last = numeric(), ip = numeric(), war = numeric(), war_lo = numeric(), war_hi = numeric(),
                           true_talent = numeric(), tt_lo = numeric(), tt_hi = numeric(), era = numeric(), era_lo = numeric(),
                           era_hi = numeric(), fip = numeric(), k = numeric(), bbhbp = numeric(), hr = numeric(),
                           hbip = numeric(), step_forward = numeric(), step_back = numeric())
@@ -163,16 +170,18 @@ projections_table <- function(proj, pitchers, basis = "All", team = "All", min_i
   who <- pitchers[pitchers$season == base, ] %>% dplyr::arrange(level != "MLB") %>%
     dplyr::group_by(pitcher) %>%
     dplyr::summarise(team = dplyr::first(team_abbrev), teams = paste(unique(unlist(strsplit(teams, ","))), collapse = ","),
-                     ip = sum(ip_outs, na.rm = TRUE) / 3, .groups = "drop")
+                     ip_last = sum(ip_outs, na.rm = TRUE) / 3, .groups = "drop")
+  for (v in c("ip", "war", "war_lo", "war_hi", "p_starter")) if (!v %in% names(h)) h[[v]] <- NA_real_
   t <- h %>% dplyr::left_join(who, by = "pitcher") %>%
-    dplyr::mutate(ip = dplyr::coalesce(ip, 0)) %>%
-    dplyr::filter(ip >= min_ip)
+    dplyr::mutate(ip_last = dplyr::coalesce(ip_last, 0)) %>%
+    dplyr::filter(ip_last >= min_ip)
   if (!identical(basis, "All")) t <- t[t$basis == basis, ]
   if (!identical(team, "All")) t <- t[vapply(strsplit(dplyr::coalesce(t$teams, ""), ",", fixed = TRUE), function(x) team %in% x, TRUE), ]
   if (!nrow(t)) return(empty)
-  t %>% dplyr::transmute(pitcher, name, team, basis, ip, true_talent = tt_grade, tt_lo, tt_hi, era, era_lo, era_hi, fip,
+  t %>% dplyr::transmute(pitcher, name, team, basis, role = ifelse(dplyr::coalesce(p_starter, 0) >= 0.5, "SP", "RP"),
+                         ip_last, ip, war, war_lo, war_hi, true_talent = tt_grade, tt_lo, tt_hi, era, era_lo, era_hi, fip,
                          k, bbhbp, hr, hbip, step_forward, step_back) %>%
-    dplyr::arrange(dplyr::desc(true_talent))
+    dplyr::arrange(dplyr::desc(dplyr::coalesce(war, true_talent)))
 }
 
 # League Projections page
@@ -185,7 +194,7 @@ projectionsUI <- function(id) {
       selectInput(ns("team"), "Team", choices = "All"),
       sliderInput(ns("min_ip"), "Min innings last season", min = 0, max = 200, value = 0, step = 10, ticks = FALSE)),
     bslib::card(fill = FALSE, bslib::card_body(fillable = FALSE, DT::DTOutput(ns("table"), height = "auto"))),
-    p(class = "pv-note", "True talent is the 20-80 grade of projected true-talent RA9 (90% range). ERA and FIP are park-neutral true-talent projections with 90% ranges; rates are per batter faced, BABIP per ball in play. Step forward / back: chance next season's true-talent ERA is 0.75+ runs better / worse than today's. Click a row to open that pitcher."))
+    p(class = "pv-note", "True talent is the 20-80 grade of projected true-talent RA9 (90% range). ERA and FIP are park-neutral true-talent projections with 90% ranges; rates are per batter faced, BABIP per ball in play. IP and WAR are expected values (counting the chance of injury or no MLB time) with 90% ranges; Role is the likelier one. Step forward / back: chance next season's true-talent ERA is 0.75+ runs better / worse than today's. Click a row to open that pitcher."))
 }
 
 projectionsServer <- function(id, outputs, sel, parent = NULL) {
@@ -207,16 +216,17 @@ projectionsServer <- function(id, outputs, sel, parent = NULL) {
       t <- board()
       rng <- function(x, lo, hi) sprintf("%.2f–%.2f", lo, hi)
       pct <- function(x) 100 * x
-      shown <- t %>% dplyr::transmute(Name = name, Team = team, Basis = basis, `IP (last)` = ip, `True Talent` = true_talent,
-                                      `TT range` = sprintf("%d–%d", round(tt_lo), round(tt_hi)),
+      shown <- t %>% dplyr::transmute(Name = name, Team = team, Basis = basis, Role = role, `IP (last)` = ip_last,
+                                      `True Talent` = true_talent, `TT range` = sprintf("%d–%d", round(tt_lo), round(tt_hi)),
                                       ERA = era, `ERA range` = rng(era, era_lo, era_hi), FIP = fip,
+                                      IP = ip, WAR = war, `WAR range` = sprintf("%.1f to %.1f", war_lo, war_hi),
                                       `K%` = pct(k), `BB+HBP%` = pct(bbhbp), `HR%` = pct(hr), BABIP = hbip,
                                       `Step fwd` = pct(step_forward), `Step back` = pct(step_back))
       DT::datatable(shown, rownames = FALSE, selection = "single", class = "compact hover", fillContainer = FALSE,
-                    options = list(pageLength = 25, scrollX = TRUE, order = list(list(4, "desc")),
+                    options = list(pageLength = 25, scrollX = TRUE, order = list(list(11, "desc")),   # WAR
                                    columnDefs = list(list(className = "pv-name-cell", targets = 0),
-                                                     list(className = "pv-gradecell", targets = 4)))) %>%
-        DT::formatRound(c("IP (last)", "True Talent"), 0) %>%
+                                                     list(className = "pv-gradecell", targets = 5)))) %>%
+        DT::formatRound(c("IP (last)", "True Talent", "IP"), 0) %>% DT::formatRound("WAR", 1) %>%
         DT::formatRound(c("ERA", "FIP", "BABIP"), c(2, 2, 3)) %>%
         DT::formatRound(c("K%", "BB+HBP%", "HR%", "Step fwd", "Step back"), 1) %>%
         DT::formatStyle("True Talent", backgroundColor = grade_fill(), color = grade_text_color())

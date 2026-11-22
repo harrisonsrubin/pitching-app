@@ -189,8 +189,10 @@ Stuff + Location features, plus previous-pitch differences (tunneling and sequen
 - Inputs: role history, innings over the last 3 seasons, injured-list history, age, projected talent, health signals (in-season velo decline, release and arm-angle drift, workload spikes).
 - Health enters as innings risk; no standalone per-player injury-probability labels are published.
 
+- Built (P3b): role, availability and innings-given-role models on pitcher-season pairs (injured-list days from transactions, including the pre-2019 "disabled list"; workload; age; a regressed 3-season RA9; fastball velo and arm-angle change; Triple-A share), simulated together with the talent draws. Innings misses are resampled from real ones by role and workload. Published as expected innings (zeros included) and P(starter) / P(MLB) with 90% ranges.
+
 ### 8.3 WAR
-`runs above replacement = (replacement RA9 by role − projected neutral RA9) × IP / 9`, converted to wins with a run-environment-based runs-per-win. Replacement level follows the standard convention (~430 pitcher WAR per season).
+`runs above replacement = (replacement RA9 by role − projected neutral RA9) × IP / 9`, converted to wins with a run-environment-based runs-per-win. Replacement level follows the standard convention (~430 pitcher WAR per season): replacement winning percentage .380 for starters and .470 for relievers, scaled by one factor so realized pitcher WAR totals 430; runs per win = 1.5 × league RA9 + 3. Projected WAR is the mean of simulated seasons (season-outcome ERA × simulated innings) with a 90% range.
 
 ### 8.4 Dollars and surplus
 - **$/WAR, staged:**
@@ -255,7 +257,7 @@ Pre-arbitration pitchers carry the largest surplus, and many pitched in Triple-A
 - Shiny (R), built in modules. Pages: Grades, Player Projections, Movement, Location, Leaderboard, League Projections, Stuff Map, Command & Tunneling, Rolling, Pitch-Type Editor, Scorecard, plus new **Value**, **What-If**, **Team Fit**, and **Payroll Optimizer** pages (P4–P6). The old Scouting Report page is dropped.
 - **Stuff Map:** each pitcher's average movement for one pitch type (arm-side break, so hands compare), colored by his Stuff grade.
 - **Command & Tunneling:** descriptive only, no new grade. Shares of pitches in Statcast-style attack zones sized to each batter's zone (heart under 67% of the way to the edge, shadow 67–133%, chase 133–200%, waste beyond) next to the tested Location grade; for the selected pitcher, each pitch pair's gap 23.8 ft in front of the plate versus at the plate.
-- **Projection:** the Grades card shows the true talent bet, projected ERA and FIP, the luck gap and Step forward / Step back; the **Player Projections** page has the 1–5 season outlook (true-talent and season ranges, home-park ERA), component rates, how much the pitch model versus results moved the estimate, and the luck breakdown. A **League Projections** tab lists every projected pitcher's next-season numbers (true talent, ERA, FIP, component rates, Step odds), sortable and filterable by basis, team and innings.
+- **Projection:** the Grades card shows the true talent bet, projected ERA and FIP, the luck gap and Step forward / Step back; the **Player Projections** page has the 1–5 season outlook (true-talent and season ranges, home-park ERA), component rates, how much the pitch model versus results moved the estimate, and the luck breakdown. A **League Projections** tab lists every projected pitcher's next-season numbers (role, innings, WAR, true talent, ERA, FIP, component rates, Step odds), sortable and filterable by basis, team and innings.
 - **Rolling:** each pitch type's Stuff / Location / Pitching grade from its last 100 pitches up to each game (from 50 pitches on), on the season grades' scale, plus rolling velocity.
 - Loads published outputs at startup; pitch-level display data loads per pitcher and season from the private store.
 - A level filter (MLB / Triple-A / both).

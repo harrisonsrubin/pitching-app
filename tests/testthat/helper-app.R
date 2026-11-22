@@ -70,7 +70,10 @@ make_app_fixture <- function(dir) {
                   era = 3.1 + 0.1 * horizon, era_lo = era - 0.5, era_hi = era + 0.6, era_out_lo = era - 1.2, era_out_hi = era + 1.5,
                   fip = 3.2, fip_lo = 2.7, fip_hi = 3.8, ra9 = era / 0.92, tt_grade = 62, tt_lo = 54, tt_hi = 70,
                   stuff_weight = 0.4, era_home = era * 1.03,
-                  step_forward = ifelse(horizon == 1, 0.12, NA), step_back = ifelse(horizon == 1, 0.06, NA))
+                  step_forward = ifelse(horizon == 1, 0.12, NA), step_back = ifelse(horizon == 1, 0.06, NA),
+                  p_starter = ifelse(pitcher == 101, 0.9, 0.1), p_mlb = ifelse(pitcher == 101, 0.95, 0.4),
+                  ip = ifelse(pitcher == 101, 165, 20), ip_lo = ifelse(pitcher == 101, 60, 0), ip_hi = ifelse(pitcher == 101, 205, 70),
+                  war = ifelse(pitcher == 101, 3.4, 0.2), war_lo = ifelse(pitcher == 101, 0.5, -0.3), war_hi = ifelse(pitcher == 101, 6.1, 1.1))
   for (i in 1:10) proj[[paste0("chip_", i)]] <- ifelse(proj$horizon == 1, 52 + 2 * i, NA)
   arrow::write_parquet(proj, out("projections_2026.parquet"))
   arrow::write_parquet(tibble::tibble(pitcher = 101L, season = 2026L, level = "MLB", actual_era = 3.6, expected_era = 3.15,

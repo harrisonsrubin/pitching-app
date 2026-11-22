@@ -364,7 +364,16 @@ finish_rows <- function(r) {
 newdata_rows <- function(lines, signals, parks, league, base_season, horizon, component) {
   cl <- component_lines(lines, parks, league, component)
   bases <- dplyr::distinct(cl[cl$season == base_season, ], pitcher, base_season = season)
+  lost <- unique(cl$pitcher[cl$season == base_season - 1 & cl$level == "MLB"])
+  lost <- setdiff(lost, bases$pitcher)  # missed the whole base season
+  if (length(lost)) bases <- dplyr::bind_rows(bases, tibble::tibble(pitcher = lost, base_season = as.integer(base_season)))
+  last_age <- cl[cl$season < base_season, ] %>% dplyr::group_by(pitcher) %>%
+    dplyr::arrange(season, .by_group = FALSE) %>%
+    dplyr::summarise(age_fill = max(age) + (base_season - max(season)), gs_fill = dplyr::last(gs_share), .groups = "drop")
   history_features(cl, bases) %>%
+    dplyr::left_join(last_age, by = "pitcher") %>%
+    dplyr::mutate(age = dplyr::coalesce(age, age_fill), gs_share = ifelse(pitcher %in% lost, gs_fill, gs_share)) %>%
+    dplyr::select(-age_fill, -gs_fill) %>%
     dplyr::left_join(signal_features(signals, bases), by = c("pitcher", "base_season")) %>%
     dplyr::mutate(window = "full", horizon = as.integer(horizon), target_season = base_season + horizon,
                   age_target = age + horizon) %>%
@@ -597,7 +606,8 @@ qmed <- function(M) apply(M, 1, stats::median, na.rm = TRUE)
 
 # Simulate each pitcher now and 1-5 seasons out: rates, ERA, FIP, grade, chips, Step odds
 project_pitchers <- function(models, lines, signals, parks, league, base_season, map, anchors, curves,
-                             n_draws = 1000L, seed = 1L, keep_draws = FALSE, h2_method = PROJ_H2_METHOD) {
+                             n_draws = 1000L, seed = 1L, keep_draws = FALSE, h2_method = PROJ_H2_METHOD,
+                             pt = NULL, pt_new = NULL, war_k = NULL, pt_shift = 0L) {
   set.seed(seed)
   kept <- list()
   signals <- ensure_signal_cols(signals)
@@ -645,6 +655,31 @@ project_pitchers <- function(models, lines, signals, parks, league, base_season,
            stats::rnorm(length(n)) * runs_noise_sd(map, outs), 0)
   }
   era_of <- function(ra9) ra9 * lg_last$er_r
+  # Playing-time draws aligned to the projected pitchers (no row means no MLB innings)
+  sims <- NULL
+  if (!is.null(pt) && !is.null(pt_new) && nrow(pt_new)) {
+    rows <- pt_new[match(ids, pt_new$pitcher), ]
+    ok <- !is.na(rows$pitcher)
+    talent_ra9 <- lapply(1:5, function(h) { r <- lapply(rates, `[[`, h); ra9_from_rates(map, r$k, r$bbhbp, r$hr, r$hbip)[ok, , drop = FALSE] })
+    perf <- lapply(c(rep(list(talent_ra9[[1]]), pt_shift), talent_ra9), perf_from_draws, past = rows$perf_ra9[ok])
+    s_ok <- simulate_playing_time(pt, rows[ok, ], n_draws, 5L + pt_shift, perf = perf)
+    s_ok <- s_ok[(pt_shift + 1L):(pt_shift + 5L)]  # mid-season: start from the last complete season
+    sims <- lapply(s_ok, function(x) {
+      o <- matrix(0, length(ids), n_draws); sp <- matrix(0, length(ids), n_draws)
+      o[ok, ] <- x$outs; sp[ok, ] <- x$starter
+      list(outs = o, starter = sp)
+    })
+  }
+  # Season outcomes with simulated innings: batters faced from each draw's outs and rates
+  outcome_pt <- function(r, outs) {
+    hits <- r$hr + r$hbip * pmax(1 - r$k - r$bbhbp - r$hr, 0)
+    n <- pmax(round(outs / pmax(1 - r$bbhbp - hits, 0.3)), 1)
+    k <- stats::rbinom(length(n), n, r$k); bb <- stats::rbinom(length(n), n, r$bbhbp); hr <- stats::rbinom(length(n), n, r$hr)
+    bip <- pmax(n - k - bb - hr, 1); hb <- stats::rbinom(length(n), bip, r$hbip)
+    ra9 <- pmax(ra9_from_rates(map, k / n, bb / n, hr / n, matrix(hb / bip, nrow(outs))) +
+                  stats::rnorm(length(n)) * runs_noise_sd(map, pmax(outs, 1)), 0)
+    matrix(ra9, nrow(outs))
+  }
   r_now <- now
   era_now <- era_of(ra9_from_rates(map, r_now$k, r_now$bbhbp, r_now$hr, r_now$hbip))
   sw <- Reduce(`+`, lapply(PROJ_COMPONENTS, function(cpt) stuff_weight(models[[cpt]]$h1, nd[[cpt]][match(ids, nd[[cpt]]$pitcher), ]))) / length(PROJ_COMPONENTS)
@@ -656,7 +691,13 @@ project_pitchers <- function(models, lines, signals, parks, league, base_season,
     r <- lapply(rates, `[[`, h)
     ra9 <- ra9_from_rates(map, r$k, r$bbhbp, r$hr, r$hbip)
     era <- era_of(ra9); fip <- fip_from_rates(r$k, r$bbhbp, r$hr, r$hbip, lg_last$fip_const)
-    g <- tt_grade(ra9, anchors); eo <- era_of(outcome(r))
+    g <- tt_grade(ra9, anchors)
+    if (!is.null(sims)) {
+      outs <- sims[[h]]$outs; sp <- sims[[h]]$starter
+      ro <- outcome_pt(r, outs)
+      wd <- war_from(ro, outs, sp, lg_last$lg_ra9, war_k %||% 1)
+      eo <- era_of(ro); eo[outs == 0] <- NA
+    } else eo <- era_of(outcome(r))
     if (keep_draws && h == 1) kept <<- list(era = era, era_out = eo, era_now = era_now)
     t <- tibble::tibble(pitcher = ids, horizon = h, target_season = base_season + h)
     for (cpt in PROJ_COMPONENTS) {
@@ -673,6 +714,13 @@ project_pitchers <- function(models, lines, signals, parks, league, base_season,
       t$step_forward <- so[, "forward"]; t$step_back <- so[, "back"]
     } else { t$step_forward <- NA_real_; t$step_back <- NA_real_ }
     t$stuff_weight <- sw; t$era_home <- t$era * ppf
+    if (!is.null(sims)) {
+      pitched <- outs > 0
+      t$p_mlb <- rowMeans(pitched)
+      t$p_starter <- ifelse(rowSums(pitched) > 0, rowSums(sp * pitched) / pmax(rowSums(pitched), 1), NA_real_)
+      t$ip <- rowMeans(outs) / 3; t$ip_lo <- q5(outs / 3); t$ip_hi <- q95(outs / 3)
+      t$war <- rowMeans(wd); t$war_lo <- pmin(q5(wd), t$war); t$war_hi <- pmax(q95(wd), t$war)
+    }
     t
   })
   res <- dplyr::bind_rows(out) %>% dplyr::left_join(basis, by = "pitcher") %>%
@@ -778,7 +826,10 @@ projection_inputs <- function(through) {
   lines <- season_lines(dplyr::bind_rows(lapply(keys, store_read)))
   grades <- read_tagged_store("grades", through); comps <- read_tagged_store("components", through)
   signals <- if (nrow(grades)) pitch_signals(grades, comps) else tibble::tibble(level = character(), season = integer(), pitcher = integer())
-  list(lines = lines, league = league_table(lines), signals = signals,
+  tk <- sprintf("raw/statsapi/transactions/%s.parquet", 2012:through); tk <- tk[store_exists(tk)]
+  txn <- dplyr::bind_rows(lapply(tk, store_read))
+  il <- if (nrow(txn)) il_days(dplyr::mutate(txn, il_event = classify_il(description))) else NULL
+  list(lines = lines, league = league_table(lines), signals = signals, il = il, profiles = read_tagged_store("profiles", through),
        windows = read_tagged_store("windows", through), parks = read_tagged_store("parks", through),
        pitchers = read_tagged_store("pitchers", through))
 }
@@ -796,7 +847,13 @@ run_projection_from <- function(inp, season, anchors, n_draws = 1000L, seed = 1L
   models <- fit_projection_models(i$lines, i$signals, NULL, i$parks, i$league, horizons = 1:2)
   map <- fit_runs_map(i$lines, i$parks)
   curves <- stats::setNames(lapply(PROJ_COMPONENTS, function(cpt) aging_curve(i$lines, cpt)), PROJ_COMPONENTS)
-  proj <- project_pitchers(models, i$lines, i$signals, i$parks, i$league, season, map, anchors, curves, n_draws, seed)
+  ps <- pt_setup(season)
+  il <- i$il %||% tibble::tibble(pitcher = integer(), season = integer(), il_days = numeric())
+  pt <- fit_playing_time(pt_rows(i$lines, il, i$profiles, i$league, ps$train[ps$train >= min(i$lines$season) + 2L]))
+  pt_new <- pt_rows(i$lines, il, i$profiles, i$league, ps$base, with_target = FALSE)
+  war_k <- replacement_scale(realized_war_inputs(i$lines, i$parks), i$league, ps$war[ps$war >= min(i$lines$season)])
+  proj <- project_pitchers(models, i$lines, i$signals, i$parks, i$league, season, map, anchors, curves, n_draws, seed,
+                           pt = pt, pt_new = pt_new, war_k = war_k, pt_shift = ps$shift)
   today <- attr(proj, "today")
   names_tbl <- if (!is.null(i$pitchers) && nrow(i$pitchers)) i$pitchers %>% dplyr::arrange(dplyr::desc(season), level != "MLB") %>%
     dplyr::distinct(pitcher, .keep_all = TRUE) %>% dplyr::select(pitcher, name) else tibble::tibble(pitcher = integer(), name = character())
@@ -833,11 +890,12 @@ write_projection_outputs <- function(res, season) {
 }
 
 # Published outputs the projection reads
-PROJECTION_OUTPUT_PREFIXES <- c("grades", "components", "windows", "parks", "pitchers")
+PROJECTION_OUTPUT_PREFIXES <- c("grades", "components", "windows", "parks", "pitchers", "profiles")
 
 # CI: download season lines and published outputs; any failed download stops the run
 fetch_projection_inputs <- function(data_repo, app_repo, app_token = NULL) {
   for (lv in c("MLB", "AAA")) release_download_dir(sprintf("raw/statsapi/pitching/%s", lv), data_repo)
+  release_download_dir("raw/statsapi/transactions", data_repo)  # injured-list history for playing time
   dir.create(store_path("outputs"), recursive = TRUE, showWarnings = FALSE)
   for (pre in PROJECTION_OUTPUT_PREFIXES) {
     st <- gh_run(c("release", "download", OUTPUTS_TAG, "--repo", app_repo, "--pattern", paste0(pre, "_*"),
@@ -852,5 +910,190 @@ check_projection_inputs <- function(season) {
   keys <- outputs_key(sprintf("%s_MLB_%s.parquet", PROJECTION_OUTPUT_PREFIXES, season))
   missing <- keys[!store_exists(keys)]
   if (length(missing)) stop("Projection inputs missing: ", paste(basename(missing), collapse = ", "))
+  if (!store_exists(sprintf("raw/statsapi/transactions/%s.parquet", season - 1L))) stop("Projection inputs missing: transactions for ", season - 1L)
   TRUE
 }
+
+# Playing time
+
+PT_MAX_OUTS <- 650  # 216.2 innings; one pitcher has topped it since 2021
+PT_PERF_PAD <- 150  # outs of league-average RA9 added to the performance measure
+
+# Primary fastball velocity and arm angle per pitcher-season (MLB row preferred)
+fastball_trend <- function(profiles) {
+  if (is.null(profiles) || !nrow(profiles)) return(tibble::tibble(pitcher = integer(), season = integer(), velo = numeric(), arm = numeric()))
+  profiles %>% dplyr::filter(pitch_type %in% c("4S", "SNK")) %>%
+    dplyr::arrange(pitcher, season, level != "MLB", dplyr::desc(n)) %>%
+    dplyr::distinct(pitcher, season, .keep_all = TRUE) %>%
+    dplyr::transmute(pitcher, season, velo, arm = arm_angle)
+}
+
+# One row per pitcher with a line in each base season: workload, health, trends, and next-season targets
+pt_rows <- function(lines, il, profiles, league, base_seasons, with_target = TRUE) {
+  if (with_target) base_seasons <- setdiff(base_seasons, 2019L)  # the 2020 season was 60 games, not a fair target
+  mlb <- lines[lines$level == "MLB", ]
+  short <- mlb$season == 2020L
+  mlb$outs[short] <- round(mlb$outs[short] * 162 / 60); mlb$r[short] <- round(mlb$r[short] * 162 / 60)
+  outs_in <- function(p, s) { o <- mlb$outs[match(paste(p, s), paste(mlb$pitcher, mlb$season))]; dplyr::coalesce(o, 0) }
+  il_in <- function(p, s) { d <- il$il_days[match(paste(p, s), paste(il$pitcher, il$season))]; dplyr::coalesce(d, 0) }
+  lg <- league[league$level == "MLB", ]
+  fb <- fastball_trend(profiles)
+  out <- lapply(base_seasons, function(y) {
+    cur <- lines[lines$season == y, ] %>% dplyr::group_by(pitcher) %>%
+      dplyr::summarise(age = max(age), gs_share = stats::weighted.mean(gs_share, pmax(tbf, 1)),
+                       aaa_share = sum(tbf[level == "AAA"]) / max(sum(tbf), 1), .groups = "drop")
+    lost <- mlb[mlb$season == y - 1 & !mlb$pitcher %in% cur$pitcher, ]  # missed the whole season
+    if (nrow(lost)) cur <- dplyr::bind_rows(cur, tibble::tibble(pitcher = lost$pitcher, age = lost$age + 1,
+                                                                gs_share = lost$gs_share, aaa_share = 0))
+    if (!nrow(cur)) return(NULL)
+    p <- cur$pitcher
+    w <- c(5, 4, 3); hist <- lapply(0:2, function(k) mlb[mlb$season == y - k, c("pitcher", "outs", "r")])
+    num <- den <- numeric(length(p))
+    for (k in 1:3) { h <- hist[[k]][match(p, hist[[k]]$pitcher), ]; num <- num + w[k] * dplyr::coalesce(h$r, 0); den <- den + w[k] * dplyr::coalesce(h$outs, 0) }
+    lg_ra9 <- lg$lg_ra9[match(y, lg$season)]
+    if (is.na(lg_ra9)) lg_ra9 <- stats::median(lg$lg_ra9)
+    v0 <- fb[fb$season == y, ]; v1 <- fb[fb$season == y - 1, ]
+    vc <- v0$velo[match(p, v0$pitcher)] - v1$velo[match(p, v1$pitcher)]
+    ac <- v0$arm[match(p, v0$pitcher)] - v1$arm[match(p, v1$pitcher)]
+    r <- tibble::tibble(pitcher = p, base_season = as.integer(y),
+                        outs_1 = outs_in(p, y), outs_2 = outs_in(p, y - 1), outs_3 = outs_in(p, y - 2),
+                        gs_share = cur$gs_share, aaa_share = cur$aaa_share,
+                        il_1 = il_in(p, y), il_3 = il_in(p, y) + il_in(p, y - 1) + il_in(p, y - 2),
+                        perf_ra9 = 27 * (num + PT_PERF_PAD * lg_ra9 / 27) / (den + PT_PERF_PAD),
+                        has_velo = as.numeric(!is.na(vc)), velo_chg = dplyr::coalesce(vc, 0), arm_chg = dplyr::coalesce(ac, 0),
+                        age_next = cur$age + 1)
+    r$max_outs3 <- pmax(r$outs_1, r$outs_2, r$outs_3)
+    if (with_target) {
+      nx <- mlb[mlb$season == y + 1, ]
+      i <- match(p, nx$pitcher)
+      r$outs_next <- dplyr::coalesce(nx$outs[i], 0)
+      r$available <- as.numeric(r$outs_next >= 1)
+      r$starter <- ifelse(r$available == 1, as.numeric(nx$gs_share[i] >= 0.5), NA_real_)
+    }
+    r
+  })
+  dplyr::bind_rows(out)
+}
+
+# Role, availability and innings models on pitcher-season pairs
+PT_RECENCY <- 0.75  # each season back counts 25% less (innings per pitcher keep falling)
+
+fit_playing_time <- function(rows) {
+  rows <- rows[is.finite(rows$age_next), ]
+  rows$w <- PT_RECENCY^(max(rows$base_season) - rows$base_season)
+  played <- rows[rows$available == 1 & !is.na(rows$starter), ]
+  role <- (stats::glm(starter ~ gs_share + log1p(outs_1) + age_next + perf_ra9 + aaa_share, data = played,
+                                      family = stats::quasibinomial(), weights = w))
+  avail <- stats::glm(available ~ log1p(outs_1) + log1p(outs_2) + il_1 + il_3 + splines::ns(age_next, 3) + perf_ra9 +
+                        aaa_share + velo_chg * has_velo + gs_share, data = rows, family = stats::quasibinomial(), weights = w)
+  played$starter <- as.numeric(played$starter)
+  ip <- stats::lm(log(outs_next) ~ starter * (log1p(outs_1) + log1p(max_outs3) + il_1 + perf_ra9) +
+                    splines::ns(age_next, 3) + aaa_share, data = played, weights = w)
+  res <- stats::residuals(ip)
+  sigma <- c(rp = stats::sd(res[played$starter == 0]), sp = stats::sd(res[played$starter == 1]))
+  mu <- stats::fitted(ip)
+  group <- function(k) {
+    r <- unname(res[played$starter == k]); m <- mu[played$starter == k]
+    if (length(r) < 10 * PT_BANDS) {  # too few pitchers in this role to split: one shared band
+      r <- if (length(r) >= 10) r else unname(res)
+      return(list(breaks = rep(Inf, PT_BANDS - 1), resid = rep(list(r), PT_BANDS)))
+    }
+    br <- unname(stats::quantile(m, seq(0, 1, length.out = PT_BANDS + 1))[2:PT_BANDS])
+    b <- findInterval(m, br) + 1
+    list(breaks = br, resid = lapply(seq_len(PT_BANDS), function(i) r[b == i]))
+  }
+  g_rp <- group(0); g_sp <- group(1)
+  resid <- list(rp = g_rp$resid, sp = g_sp$resid)  # real misses by role and projected innings
+  list(role = role, avail = avail, ip = ip, sigma = sigma, resid = resid, breaks = list(rp = g_rp$breaks, sp = g_sp$breaks))
+}
+
+PT_BANDS <- 5  # misses grouped into fifths of projected innings
+
+# Resample a real miss from pitchers with a similar projection and the same role
+draw_resid <- function(pt, sp, mu) {
+  e <- numeric(length(sp))
+  for (k in c("rp", "sp")) {
+    i <- which((sp == 1) == (k == "sp"))
+    if (!length(i)) next
+    b <- findInterval(mu[i], pt$breaks[[k]]) + 1
+    for (j in seq_len(PT_BANDS)) { ij <- i[b == j]; if (length(ij)) e[ij] <- sample(pt$resid[[k]][[j]], length(ij), TRUE) }
+  }
+  e
+}
+
+# Draws of role and MLB outs for each future season, rolling each season's draws into the next
+simulate_playing_time <- function(pt, rows, n_draws, horizons = 5L, perf = NULL) {
+  n <- nrow(rows)
+  rep_rows <- rows[rep(seq_len(n), times = n_draws), ]   # pitcher-major within each draw column
+  out <- vector("list", horizons)
+  for (h in seq_len(horizons)) {
+    if (!is.null(perf)) rep_rows$perf_ra9 <- as.vector(perf[[min(h, length(perf))]])  # each draw's own talent
+    p_sp <- stats::predict(pt$role, rep_rows, type = "response")
+    p_av <- stats::predict(pt$avail, rep_rows, type = "response")
+    sp <- stats::rbinom(length(p_sp), 1, p_sp); av <- stats::rbinom(length(p_av), 1, p_av)
+    nd <- rep_rows; nd$starter <- sp
+    mu <- stats::predict(pt$ip, nd)
+    e <- if (!is.null(pt$breaks)) draw_resid(pt, sp, mu)
+         else stats::rnorm(length(mu)) * ifelse(sp == 1, pt$sigma[["sp"]], pt$sigma[["rp"]])
+    outs <- ifelse(av == 1, pmin(pmax(round(exp(mu + e)), 1), PT_MAX_OUTS), 0)
+    out[[h]] <- list(starter = matrix(sp, n, n_draws), outs = matrix(outs, n, n_draws))
+    rep_rows$outs_3 <- rep_rows$outs_2; rep_rows$outs_2 <- rep_rows$outs_1; rep_rows$outs_1 <- outs
+    rep_rows$max_outs3 <- pmax(rep_rows$outs_1, rep_rows$outs_2, rep_rows$outs_3)
+    rep_rows$gs_share <- ifelse(outs > 0, sp, rep_rows$gs_share)
+    rep_rows$aaa_share <- ifelse(outs > 0, 0, rep_rows$aaa_share)
+    rep_rows$il_3 <- rep_rows$il_3 - rep_rows$il_1; rep_rows$il_1 <- 0
+    rep_rows$age_next <- rep_rows$age_next + 1
+    rep_rows$has_velo <- 0; rep_rows$velo_chg <- 0
+  }
+  out
+}
+
+# WAR
+
+REPL_WIN <- c(sp = 0.38, rp = 0.47)  # replacement winning percentage by role
+WAR_TOTAL <- 430  # pitcher WAR per season
+
+runs_per_win <- function(lg_ra9) 1.5 * lg_ra9 + 3
+
+# Wins above replacement; k scales the role offsets so the league total hits WAR_TOTAL
+war_from <- function(ra9, outs, starter, lg_ra9, k) {
+  rpw <- runs_per_win(lg_ra9)
+  repl <- lg_ra9 + k * (0.5 - ifelse(starter == 1, REPL_WIN[["sp"]], REPL_WIN[["rp"]])) * rpw
+  ifelse(outs > 0, (repl - ra9) * (outs / 3) / 9 / rpw, 0)
+}
+
+# Average scale factor that makes realized WAR total WAR_TOTAL in each calibration season
+replacement_scale <- function(act, league, seasons) {
+  ks <- vapply(seasons, function(s) {
+    a <- act[act$season == s & act$outs > 0, ]
+    lg <- league$lg_ra9[league$level == "MLB" & league$season == s]
+    if (!nrow(a) || !length(lg)) return(NA_real_)
+    rpw <- runs_per_win(lg)
+    base <- sum((lg - a$ra9_adj) * (a$outs / 3) / 9 / rpw)
+    per_k <- sum((0.5 - ifelse(a$starter == 1, REPL_WIN[["sp"]], REPL_WIN[["rp"]])) * rpw * (a$outs / 3) / 9 / rpw)
+    (WAR_TOTAL - base) / per_k
+  }, 0)
+  mean(ks, na.rm = TRUE)
+}
+
+# Realized MLB pitcher seasons for calibrating replacement level (park-adjusted RA9, role)
+realized_war_inputs <- function(lines, parks) {
+  m <- lines[lines$level == "MLB" & lines$outs > 0, ]
+  if (!is.null(parks) && nrow(parks)) {
+    m <- dplyr::left_join(m, dplyr::select(parks[parks$level == "MLB", ], pitcher, season, ppf_runs), by = c("pitcher", "season"))
+  } else m$ppf_runs <- NA_real_
+  dplyr::transmute(m, pitcher, season, outs, starter = as.numeric(gs_share >= 0.5),
+                   ra9_adj = 27 * r / outs / dplyr::coalesce(ppf_runs, 1))
+}
+
+# A season counts as complete once the regular season is over
+season_complete <- function(season, today = getOption("pv.today", Sys.Date())) today >= as.Date(sprintf("%d-10-01", season))
+
+# Which seasons playing time trains on, calibrates WAR on, and projects from
+pt_setup <- function(season, today = getOption("pv.today", Sys.Date())) {
+  done <- if (season_complete(season, today)) season else season - 1L
+  list(base = as.integer(done), shift = as.integer(season - done), train = 2012L:(done - 1L), war = 2021L:done)
+}
+
+# Each draw's talent as a shift around the pitcher's own past RA9 (the scale the models learned)
+perf_from_draws <- function(draws, past) past + (draws - apply(draws, 1, stats::median))

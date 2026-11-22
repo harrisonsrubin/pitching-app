@@ -2917,25 +2917,25 @@
   },
   "files": {
     "app.R": {
-      "checksum": "ad333a2ce9bb917ed93b0705edbc540e"
+      "checksum": "958670abefc5128bc6d2bea4641cf508"
     },
     "R/base.R": {
-      "checksum": "f28bc1a128f4ffdcf98285f93a6cb5c5"
+      "checksum": "9b59056129c967a44b2e591221e133da"
     },
     "R/data.R": {
-      "checksum": "068fe38bbc9086dd6750814d77953935"
+      "checksum": "65f1147e3027dd4945b9cdeda77d3257"
     },
     "R/editor.R": {
-      "checksum": "ec589dc6ee5c80daea53c23e35f61319"
+      "checksum": "f0b03d5445cfaf23beee0d1f00f11e67"
     },
     "R/pages.R": {
-      "checksum": "c540c8bcd2ac362a4750e5fd193c91db"
+      "checksum": "007eb1137ca9c93dfcb3a96f800d9fbe"
     },
     "R/projection.R": {
-      "checksum": "3966d937c86273d4819de4909958aa72"
+      "checksum": "b52f50ca1bbaba42ccc48ea679ca8135"
     },
     "R/sidebar.R": {
-      "checksum": "b0aafb97ee894a5ffd9c9bccfb341fe3"
+      "checksum": "5b43faac6d984646fcfb98ea284dbb21"
     }
   },
   "users": null

@@ -434,7 +434,7 @@ fetch_pitching_stats <- function(season, level, limit = 5000) {
 # Transactions: tag injured-list placements, activations and transfers
 classify_il <- function(description) {
   d <- tolower(description)
-  il <- grepl("injured list", d, fixed = TRUE)
+  il <- grepl("injured list", d, fixed = TRUE) | grepl("disabled list", d, fixed = TRUE)  # renamed in 2019
   dplyr::case_when(
     il & grepl("transferred", d, fixed = TRUE) ~ "transferred",
     il & grepl("activated", d, fixed = TRUE)   ~ "activated",
@@ -446,6 +446,45 @@ classify_il <- function(description) {
 empty_transactions <- function() {
   tibble::tibble(txn_id = integer(), date = as.Date(character()), player_id = integer(),
                  team_id = integer(), type_code = character(), description = character())
+}
+
+# Days on the injured list per pitcher-season, clipped to the regular season
+il_days <- function(transactions) {
+  t <- transactions[!is.na(transactions$il_event) & !is.na(transactions$player_id) & !is.na(transactions$date), ]
+  if (!nrow(t)) return(tibble::tibble(pitcher = integer(), season = integer(), il_days = numeric()))
+  t <- t[order(t$player_id, t$date), ]
+  stints <- lapply(split(t, t$player_id), function(p) {
+    out <- list(); open <- NULL
+    for (i in seq_len(nrow(p))) {
+      ev <- p$il_event[i]; dt <- p$date[i]
+      if (!is.null(open) && format(dt, "%Y") != format(open, "%Y")) {  # a stint never runs into the next season
+        out[[length(out) + 1]] <- c(open, as.Date(sprintf("%s-10-01", format(open, "%Y")))); open <- NULL
+      }
+      if (ev == "placed" && is.null(open)) open <- dt
+      if (ev == "activated" && !is.null(open)) { out[[length(out) + 1]] <- c(open, dt); open <- NULL }
+    }
+    if (!is.null(open)) out[[length(out) + 1]] <- c(open, as.Date(sprintf("%s-10-01", format(open, "%Y"))))  # never activated
+    if (!length(out)) return(NULL)
+    tibble::tibble(pitcher = p$player_id[1], start = as.Date(vapply(out, `[`, 0, 1)), end = as.Date(vapply(out, `[`, 0, 2)))
+  })
+  s <- dplyr::bind_rows(stints)
+  if (!nrow(s)) return(tibble::tibble(pitcher = integer(), season = integer(), il_days = numeric()))
+  s$season <- as.integer(format(s$start, "%Y"))
+  s$start <- pmax(s$start, as.Date(sprintf("%d-03-20", s$season)))
+  s$end <- pmin(s$end, as.Date(sprintf("%d-10-01", s$season)))
+  s %>% dplyr::filter(end > start) %>% dplyr::group_by(pitcher, season) %>%
+    dplyr::summarise(il_days = covered_days(start, end), .groups = "drop")
+}
+
+# Total days covered by possibly overlapping date ranges
+covered_days <- function(start, end) {
+  o <- order(start); start <- start[o]; end <- end[o]
+  total <- 0; cur_s <- start[1]; cur_e <- end[1]
+  for (i in seq_along(start)[-1]) {
+    if (start[i] <= cur_e) cur_e <- max(cur_e, end[i])
+    else { total <- total + as.numeric(cur_e - cur_s); cur_s <- start[i]; cur_e <- end[i] }
+  }
+  total + as.numeric(cur_e - cur_s)
 }
 
 parse_transactions <- function(json) {

@@ -377,7 +377,8 @@ cmd_build_scorecard_p3 <- function(args) {
   marcel <- dplyr::bind_rows(lapply(BASES + 1L, function(s)
     dplyr::mutate(marcel_ra9(dplyr::select(act, pitcher, season, ip, ra9, age), s, lg$lg_ra9[lg$season == s - 1]), season = s)))
 
-  next_frames <- list(); tp <- list(); cal <- list(); aaa <- list(); two_frames <- list()
+  next_frames <- list(); tp <- list(); cal <- list(); aaa <- list(); two_frames <- list(); pt_frames <- list()
+  rw_all <- realized_war_inputs(inp$lines, inp$parks)
   for (y in c(BASES, 2026L)) {
     i <- trim_inputs(inp, y)
     models <- fit_projection_models(i$lines, i$signals, NULL, i$parks, i$league, horizons = 1:2)
@@ -387,8 +388,11 @@ cmd_build_scorecard_p3 <- function(args) {
                                            era_tt = ra9 * er_r, season = y)
     if (y == 2026L) break
     curves <- stats::setNames(lapply(PROJ_COMPONENTS, function(cpt) aging_curve(i$lines, cpt)), PROJ_COMPONENTS)
+    pt <- fit_playing_time(pt_rows(i$lines, i$il, i$profiles, i$league, 2012:(y - 1L)))
+    pt_new <- pt_rows(i$lines, i$il, i$profiles, i$league, y, with_target = FALSE)
+    war_k <- replacement_scale(realized_war_inputs(i$lines, i$parks), i$league, 2021:y)
     proj <- project_pitchers(models, i$lines, i$signals, i$parks, i$league, y, map, anchors, curves,
-                             n_draws = 500L, seed = y, keep_draws = TRUE)
+                             n_draws = 500L, seed = y, keep_draws = TRUE, pt = pt, pt_new = pt_new, war_k = war_k)
     h1 <- proj[proj$horizon == 1, ]
     dr <- attr(proj, "draws")
     if (y + 2L <= 2026L) {  # season 2: two-year model vs next season aged forward
@@ -414,6 +418,20 @@ cmd_build_scorecard_p3 <- function(args) {
       dplyr::mutate(base = y)
     f$crps <- vapply(seq_len(nrow(f)), function(k) crps_draws(dr$era_out[as.character(f$pitcher[k]), ], f$era_next[k]), 0)
     next_frames[[as.character(y)]] <- f
+    # Playing time and WAR: every projected pitcher, realized zeros included
+    lg_y <- lg$lg_ra9[lg$season == y]; lg_n <- lg$lg_ra9[lg$season == y + 1]
+    mlb_y <- i$lines[i$lines$level == "MLB" & i$lines$season == y, ]; mlb_y1 <- i$lines[i$lines$level == "MLB" & i$lines$season == y - 1, ]
+    a_n <- rw_all[rw_all$season == y + 1, ]
+    pf <- h1 %>% dplyr::transmute(base = y, pitcher, ra9, ip, ip_lo, ip_hi, war, war_lo, war_hi) %>%
+      dplyr::left_join(dplyr::transmute(a_n, pitcher, outs_act = outs, ra9_act = ra9_adj, sp_act = starter), by = "pitcher") %>%
+      dplyr::mutate(ip_act = dplyr::coalesce(outs_act, 0) / 3,
+                    war_act = war_from(dplyr::coalesce(ra9_act, 0), dplyr::coalesce(outs_act, 0), dplyr::coalesce(sp_act, 0), lg_n, war_k),
+                    ip_y = dplyr::coalesce(mlb_y$outs[match(pitcher, mlb_y$pitcher)], 0) / 3,
+                    ip_y1 = dplyr::coalesce(mlb_y1$outs[match(pitcher, mlb_y1$pitcher)], 0) / 3,
+                    sp_y = as.numeric(dplyr::coalesce(mlb_y$gs_share[match(pitcher, mlb_y$pitcher)], 0) >= 0.5),
+                    marcel_ip = 0.5 * ip_y + 0.1 * ip_y1 + ifelse(sp_y == 1, 50, 25),
+                    marcel_war = war_from(ra9, marcel_ip * 3, sp_y, lg_y, war_k))
+    pt_frames[[as.character(y)]] <- pf
     message("Base ", y, " done (", round(difftime(Sys.time(), t_start, units = "mins"), 1), " min)")
   }
   nf <- dplyr::bind_rows(next_frames)
@@ -438,6 +456,20 @@ cmd_build_scorecard_p3 <- function(args) {
   two_tbl <- tibble::tibble(method = c("model", "step"),
                             rmse = c(raw_rmse(tw$ra9_2, tw$model, tw$w), raw_rmse(tw$ra9_2, tw$step, tw$w)),
                             cv_rmse = c(cv_rmse(tw, ra9_2 ~ model, tw$w)$rmse, cv_rmse(tw, ra9_2 ~ step, tw$w)$rmse))
+
+  # Playing time and WAR
+  ptf <- dplyr::bind_rows(pt_frames); ptf$w <- 1; ptf$w_act <- ptf$ip_act + 10
+  pt_tbl <- tibble::tibble(metric = c("Innings", "WAR"),
+                           ours = c(raw_rmse(ptf$ip_act, ptf$ip, ptf$w), raw_rmse(ptf$war_act, ptf$war, ptf$w)),
+                           marcel = c(raw_rmse(ptf$ip_act, ptf$marcel_ip, ptf$w), raw_rmse(ptf$war_act, ptf$marcel_war, ptf$w)),
+                           ours_actual_weighted = c(raw_rmse(ptf$ip_act, ptf$ip, ptf$w_act), raw_rmse(ptf$war_act, ptf$war, ptf$w_act)),
+                           marcel_actual_weighted = c(raw_rmse(ptf$ip_act, ptf$marcel_ip, ptf$w_act), raw_rmse(ptf$war_act, ptf$marcel_war, ptf$w_act)),
+                           ours_design_weighted = c(raw_rmse(ptf$ip_act, ptf$ip, pmax(ptf$ip, ptf$ip_act, 1)), raw_rmse(ptf$war_act, ptf$war, pmax(ptf$ip, ptf$ip_act, 1))),
+                           marcel_design_weighted = c(raw_rmse(ptf$ip_act, ptf$marcel_ip, pmax(ptf$marcel_ip, ptf$ip_act, 1)), raw_rmse(ptf$war_act, ptf$marcel_war, pmax(ptf$marcel_ip, ptf$ip_act, 1))),
+                           coverage_90 = c(coverage(ptf$ip_lo, ptf$ip_hi, ptf$ip_act), coverage(ptf$war_lo, ptf$war_hi, ptf$war_act)))
+  war_tot <- ptf %>% dplyr::group_by(base) %>% dplyr::summarise(projected = sum(war), realized = sum(war_act), .groups = "drop")
+  part <- nf[nf$ip_next >= 20, ]
+  cov_20 <- coverage(part$era_out_lo, part$era_out_hi, part$era_next)
 
   # Ranges and odds
   cov_all <- coverage(nf$era_out_lo, nf$era_out_hi, nf$era_next[TRUE])
@@ -506,7 +538,12 @@ cmd_build_scorecard_p3 <- function(args) {
             pf(g(incr, "Projection (ours)", "delta") < g(incr, "Pitching+", "delta")), g(incr, "Projection (ours)", "delta"), g(incr, "Pitching+", "delta")),
     vapply(seq_len(nrow(ros_tbl)), function(k) sprintf("%s — Projection beats Marcel + window RA9 on rest-of-season RA9 RMSE after %s pitches (%.3f vs %.3f)",
             pf(ros_tbl$ours[k] < ros_tbl$marcel_window[k]), ros_tbl$pitches[k], ros_tbl$ours[k], ros_tbl$marcel_window[k]), ""),
-    sprintf("%s — 90%% season ranges cover 85–95%% of next-season ERAs (%.1f%%, qualified pitchers)", pf(cov_q >= 0.85 && cov_q <= 0.95), 100 * cov_q))
+    sprintf("%s — 90%% season ranges cover 85–95%% of next-season ERAs (%.1f%%, qualified pitchers)", pf(cov_q >= 0.85 && cov_q <= 0.95), 100 * cov_q),
+    sprintf("%s — 90%% season ERA ranges cover 85–95%% for every pitcher with 20+ IP next season (%.1f%%)", pf(cov_20 >= 0.85 && cov_20 <= 0.95), 100 * cov_20),
+    sprintf("%s — Innings projection beats Marcel playing time (RMSE %.1f vs %.1f IP)", pf(pt_tbl$ours[1] < pt_tbl$marcel[1]), pt_tbl$ours[1], pt_tbl$marcel[1]),
+    sprintf("%s — WAR projection beats Marcel playing time (RMSE %.2f vs %.2f)", pf(pt_tbl$ours[2] < pt_tbl$marcel[2]), pt_tbl$ours[2], pt_tbl$marcel[2]),
+    sprintf("%s — 90%% innings ranges cover 85–95%% (%.1f%%)", pf(pt_tbl$coverage_90[1] >= 0.85 && pt_tbl$coverage_90[1] <= 0.95), 100 * pt_tbl$coverage_90[1]),
+    sprintf("%s — 90%% WAR ranges cover 85–95%% (%.1f%%)", pf(pt_tbl$coverage_90[2] >= 0.85 && pt_tbl$coverage_90[2] <= 0.95), 100 * pt_tbl$coverage_90[2]))
   md_tbl <- function(t, digits = 3) {
     fmt <- function(x) if (is.numeric(x)) formatC(x, digits = digits, format = "f") else as.character(x)
     c(paste0("| ", paste(names(t), collapse = " | "), " |"), paste0("|", strrep("---|", ncol(t))),
@@ -524,6 +561,10 @@ cmd_build_scorecard_p3 <- function(args) {
            "\"model\" = the two-year model; \"step\" = next season's projection stepped forward with the aging curve.", "", md_tbl(two_tbl), "",
            sprintf("## Incremental value over prior RA9 (prior alone: RMSE %.3f)", base_prior), "", md_tbl(incr, 4), "",
            "## Rest of season (park-adjusted RA9, 30+ IP after the window)", "", md_tbl(ros_tbl), "",
+           "## Playing time and WAR (every projected pitcher, realized zeros included)", "",
+           "Marcel playing time: 0.5 x last season's IP + 0.1 x the season before + 50 (starters) or 25 (relievers), with our ERA projection.", "",
+           "Pass/fail uses plain RMSE, the right test for an expected-value forecast. The actual-weighted columns weight by actual IP + 10; the design-weighted columns weight each forecast by the larger of its own projection and actual IP (the metric first planned). Both reward forecasts that run high (Marcel gives every Triple-A arm 25 IP).", "",
+           md_tbl(pt_tbl), "", "League WAR by base season (projected sum of expected WAR vs realized):", "", md_tbl(war_tot, 0), "",
            "## Ranges", "",
            sprintf("- 90%% season ranges contain %.1f%% of next-season ERAs for qualified pitchers and %.1f%% for every pitcher projected.", 100 * cov_q, 100 * cov_all),
            sprintf("- Mean CRPS of the next-season ERA distribution (qualified, weighted): %.3f.", crps_q), "",

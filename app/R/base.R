@@ -78,6 +78,14 @@ body { font-variant-numeric: tabular-nums; }
 .pv-grade { min-width: 92px; text-align: center; padding: 8px 10px 6px; border-radius: 6px; border: 1px solid rgba(22,33,58,.08); }
 .pv-grade .pv-num { font-family: '%3$s', sans-serif; font-weight: 700; font-size: 2.6rem; line-height: 1; color: %1$s; }
 .pv-grade .pv-range { font-size: .75rem; color: %1$s; opacity: .75; }
+.pv-pills { flex-basis: 100%%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: -6px; }
+.pv-pills-label { font-size: .8rem; font-weight: 600; color: %5$s; margin-right: 4px; }
+.pv-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; border: 1px solid %4$s;
+  border-radius: 14px; background: #fff; color: %1$s; font-size: .85rem; font-weight: 600; cursor: pointer; }
+.pv-pill:hover { border-color: %2$s; }
+.pv-pill.active { background: %1$s; border-color: %1$s; color: #fff; }
+.pv-pill-lvl { font-size: .68rem; font-weight: 600; opacity: .75; }
+.pv-pill-grade { min-width: 28px; padding: 1px 6px; border-radius: 10px; color: %1$s; font-family: '%3$s', sans-serif; font-weight: 700; font-size: .95rem; text-align: center; }
 .pv-proj { flex-basis: 100%%; border-top: 1px solid %4$s; padding-top: 14px; margin-top: 4px; }
 .pv-proj-title { font-family: '%3$s', sans-serif; font-weight: 600; font-size: 1.25rem; color: %1$s; margin-bottom: 10px; }
 .pv-basis { margin-left: 10px; font-family: inherit; font-size: .75rem; font-weight: 600; padding: 2px 9px; border-radius: 10px; background: %6$s; color: %5$s; vertical-align: middle; }

@@ -2917,19 +2917,19 @@
   },
   "files": {
     "app.R": {
-      "checksum": "958670abefc5128bc6d2bea4641cf508"
+      "checksum": "ec95733e4b245233ba5c3cac65162f16"
     },
     "R/base.R": {
-      "checksum": "9b59056129c967a44b2e591221e133da"
+      "checksum": "a0afe5c25df39eeb1eb1a79dac8ed9f5"
     },
     "R/data.R": {
-      "checksum": "65f1147e3027dd4945b9cdeda77d3257"
+      "checksum": "cff2c67913654aafb202ce9d0214cec7"
     },
     "R/editor.R": {
       "checksum": "f0b03d5445cfaf23beee0d1f00f11e67"
     },
     "R/pages.R": {
-      "checksum": "007eb1137ca9c93dfcb3a96f800d9fbe"
+      "checksum": "fb1148be1c4c1e415ca97682c50644ff"
     },
     "R/projection.R": {
       "checksum": "b52f50ca1bbaba42ccc48ea679ca8135"

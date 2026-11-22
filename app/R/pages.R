@@ -72,6 +72,38 @@ grades_table <- function(grades, components, pitcher, level, season, summary, sc
   dplyr::bind_rows(types, out[out$pitch_type == "ALL", ])
 }
 
+# Career seasons
+
+# Every season and level the pitcher has a line, oldest first, with overall grades
+career_lines <- function(pitchers, grades, pitcher) {
+  p <- pitchers[pitchers$pitcher == pitcher, c("level", "season")]
+  g <- grades[grades$pitcher == pitcher & grades$pitch_type == "ALL" & grades$half == "full", ] %>%
+    dplyr::select(level, season, facet, grade_global) %>%
+    tidyr::pivot_wider(names_from = facet, values_from = grade_global)
+  for (f in c("stuff", "location", "pitching")) if (!f %in% names(g)) g[[f]] <- rep(NA_real_, nrow(g))
+  out <- dplyr::left_join(dplyr::distinct(p), g, by = c("level", "season"))
+  out[order(out$season, match(out$level, LEVELS)), c("level", "season", "stuff", "location", "pitching")]
+}
+
+# One button per season; clicking sends "level|season" to input_id
+season_pills <- function(lines, level, season, input_id) {
+  if (nrow(lines) < 2) return(NULL)
+  pill <- function(i) {
+    r <- lines[i, ]
+    key <- paste(r$level, r$season, sep = "|")
+    tip <- sprintf("Stuff %s, Location %s, Pitching %s",
+                   fmt_num(r$stuff, 0), fmt_num(r$location, 0), fmt_num(r$pitching, 0))
+    shiny::tags$button(type = "button", class = paste("pv-pill", if (r$level == level && r$season == season) "active"),
+                title = tip, `data-key` = key,
+                onclick = sprintf("Shiny.setInputValue('%s', '%s', {priority: 'event'})", input_id, key),
+                r$season,
+                if (r$level != "MLB") shiny::span(class = "pv-pill-lvl", LEVEL_LABELS[[r$level]]),
+                if (!is.na(r$pitching)) shiny::span(class = "pv-pill-grade", style = sprintf("background:%s;", grade_color(r$pitching)),
+                                             round(r$pitching)))
+  }
+  shiny::div(class = "pv-pills", shiny::span(class = "pv-pills-label", "Seasons"), lapply(seq_len(nrow(lines)), pill))
+}
+
 # Grades page layout
 gradesUI <- function(id) {
   ns <- NS(id)
@@ -109,7 +141,13 @@ gradesServer <- function(id, outputs, sel, display) {
               div(class = "pv-line", sprintf("%s games (%s starts), %s innings, %s pitches", fmt_num(p$g, 0),
                                              fmt_num(p$gs, 0), ip, format(p$pitches, big.mark = ",")))),
           div(class = "pv-grades", tile("stuff", "Stuff"), tile("location", "Location"), tile("pitching", "Pitching")),
+          season_pills(career_lines(outputs$pitchers, outputs$grades, s$pitcher), s$level, s$season, session$ns("season_pick")),
           projection_card(outputs$projections, outputs$luck, s$pitcher, s$level, s$season))
+    })
+    # Season pill clicked: same pitcher, that season
+    observeEvent(input$season_pick, {
+      k <- strsplit(input$season_pick, "|", fixed = TRUE)[[1]]
+      sel$select(k[1], as.integer(k[2]), sel$state()$pitcher)
     })
     tbl <- reactive({
       s <- sel$state()
@@ -250,21 +288,111 @@ corrected_uids <- function(d, edits) {
 
 UNAVAILABLE <- "Pitch data unavailable right now. Grades, Leaderboard and Scorecard still work."
 
+# Movement over the years: one frame per season, played with a button or slider
+movement_animation <- function(d, pctl, level) {
+  d <- to_pitcher_view(d)
+  seasons <- sort(unique(d$season))
+  d$text <- ""
+  for (y in seasons) {
+    i <- d$season == y
+    d$text[i] <- paste0("<b>", y, "</b><br>", pctl_text(d[i, ], pctl, level, y))
+  }
+  types <- intersect(PITCH_LABELS, unique(d$pitch_type))
+  avg <- d %>% dplyr::group_by(season, pitch_type) %>%
+    dplyr::summarise(n = dplyr::n(), hb = mean(hb, na.rm = TRUE), ivb = mean(ivb, na.rm = TRUE),
+                     velo = mean(velo, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::arrange(season) %>%
+    dplyr::mutate(text = sprintf("<b>%s, %d average</b><br>%.1f mph · IVB %.1f · HB %.1f<br>%s pitches",
+                                 pitch_type, season, velo, ivb, hb, format(n, big.mark = ",")))
+  arm <- d %>% dplyr::group_by(season) %>%
+    dplyr::summarise(arm = mean(arm_angle, na.rm = TRUE), side = sign(mean(rel_x, na.rm = TRUE)), .groups = "drop") %>%
+    dplyr::mutate(side = ifelse(side == 0 | is.na(side), 1, side))
+  # One season's points, averages and arm line, empty where a pitch wasn't thrown
+  pts <- function(y, ty) { i <- d$season == y & d$pitch_type == ty; list(x = I(d$hb[i]), y = I(d$ivb[i]), text = I(d$text[i]), ids = I(d$pitch_uid[i])) }
+  mean_pt <- function(y, ty) { a <- avg[avg$season == y & avg$pitch_type == ty, ]; list(x = I(a$hb), y = I(a$ivb), text = I(a$text), ids = I(rep(ty, nrow(a)))) }
+  arm_line <- function(y) {
+    a <- arm[arm$season == y, ]
+    if (nrow(a) == 0 || is.na(a$arm)) return(list(x = I(numeric()), y = I(numeric()), text = I(character())))
+    list(x = I(c(0, a$side * 22 * cos(a$arm * pi / 180))), y = I(c(0, 22 * sin(a$arm * pi / 180))),
+         text = I(rep(sprintf("arm angle %.0f°", a$arm), 2)))
+  }
+  first <- seasons[1]
+  p <- plotly::plot_ly()
+  # Faint path through each type's season averages, fixed in every frame
+  for (ty in types) {
+    a <- avg[avg$pitch_type == ty, ]
+    p <- plotly::add_trace(p, x = a$hb, y = a$ivb, text = a$text, type = "scatter", mode = "lines+markers",
+                           name = paste(ty, "path"), hoverinfo = "text", showlegend = FALSE,
+                           line = list(color = PITCH_COLORS[[ty]], width = 1, dash = "dot"),
+                           marker = list(color = PITCH_COLORS[[ty]], size = 5, opacity = 0.5))
+  }
+  # Animated traces start at the first season
+  for (ty in types) {
+    s <- pts(first, ty)
+    p <- plotly::add_trace(p, x = s$x, y = s$y, text = s$text, ids = s$ids, type = "scatter", mode = "markers",
+                           name = ty, hoverinfo = "text", marker = list(color = PITCH_COLORS[[ty]], size = 7, opacity = 0.45))
+  }
+  for (ty in types) {
+    s <- mean_pt(first, ty)
+    p <- plotly::add_trace(p, x = s$x, y = s$y, text = s$text, ids = s$ids, type = "scatter", mode = "markers",
+                           name = paste(ty, "avg"), hoverinfo = "text", showlegend = FALSE,
+                           marker = list(color = PITCH_COLORS[[ty]], size = 20, line = list(color = INK, width = 2)))
+  }
+  s <- arm_line(first)
+  p <- plotly::add_trace(p, x = s$x, y = s$y, text = s$text, type = "scatter", mode = "lines", name = "arm angle",
+                         hoverinfo = "text", line = list(color = "#2e8b57", dash = "dash", width = 2))
+  p <- plotly_style(p) %>% plotly::layout(
+    xaxis = list(title = "Horizontal break (in, pitcher's view)", range = c(-28, 28), zeroline = FALSE, constrain = "domain", dtick = 10),
+    yaxis = list(title = "Induced vertical break (in)", range = c(-28, 28), zeroline = FALSE, scaleanchor = "x", constrain = "domain", dtick = 10),
+    shapes = list(list(type = "line", x0 = 0, x1 = 0, y0 = -28, y1 = 28, line = list(color = LINE, width = 1)),
+                  list(type = "line", x0 = -28, x1 = 28, y0 = 0, y1 = 0, line = list(color = LINE, width = 1)))) %>%
+    plotly::config(displaylogo = FALSE, modeBarButtonsToRemove = c("autoScale2d", "toggleSpikelines", "lasso2d", "select2d"))
+  b <- plotly::plotly_build(p)
+  # Frames update the animated traces by index (0-based), every type in every season
+  n <- length(types)
+  idx <- as.list(seq(n, 3 * n))
+  b$x$frames <- lapply(seasons, function(y) {
+    list(name = as.character(y), traces = idx,
+         data = c(lapply(types, function(ty) pts(y, ty)), lapply(types, function(ty) mean_pt(y, ty)), list(arm_line(y))))
+  })
+  # Play and pause buttons plus a season slider
+  step <- function(frames, ms) list(frames, list(mode = "immediate", fromcurrent = TRUE, frame = list(duration = ms, redraw = FALSE),
+                                                 transition = list(duration = 700, easing = "cubic-in-out")))
+  b$x$layout$updatemenus <- list(list(
+    type = "buttons", showactive = FALSE, direction = "left", x = 0, y = -0.08, xanchor = "left", yanchor = "top",
+    buttons = list(list(label = "Play", method = "animate", args = step(NULL, 1400)),
+                   list(label = "Pause", method = "animate",
+                        args = list(list(NULL), list(mode = "immediate", frame = list(duration = 0, redraw = FALSE), transition = list(duration = 0)))))))
+  b$x$layout$sliders <- list(list(
+    active = 0, x = 0.16, len = 0.84, y = -0.04, pad = list(t = 30),
+    currentvalue = list(prefix = "Season ", font = list(size = 18, color = INK)),
+    steps = lapply(seasons, function(y) list(label = as.character(y), method = "animate", args = step(list(as.character(y)), 700)))))
+  b
+}
+
 # Movement page layout
 movementUI <- function(id) {
   ns <- NS(id)
   tagList(uiOutput(ns("message")),
-          bslib::card(fill = FALSE, bslib::card_body(fillable = FALSE, plotly::plotlyOutput(ns("plot"), height = "640px"))),
-          p(class = "pv-note", "Pitcher's view. Dotted ovals show where league pitches of the same type land for pitchers with a similar arm angle. Drag to zoom; double-click to reset. To retag pitches, use the Pitch-Type Editor."))
+          radioButtons(ns("view"), NULL, c("This season" = "season", "All seasons (animated)" = "all"), inline = TRUE),
+          bslib::card(fill = FALSE, bslib::card_body(fillable = FALSE, plotly::plotlyOutput(ns("plot"), height = "680px"))),
+          p(class = "pv-note", "Pitcher's view. Dotted ovals show where league pitches of the same type land for pitchers with a similar arm angle. All seasons plays his movement year by year at the selected level: big dots are season averages, dotted lines trace their path. Drag to zoom; double-click to reset. To retag pitches, use the Pitch-Type Editor."))
 }
 
-# Movement plot for the selected pitcher
-movementServer <- function(id, outputs, sel, display) {
+# Movement plot for the selected pitcher, one season or all of them
+movementServer <- function(id, outputs, sel, display, cfg, cache) {
   moduleServer(id, function(input, output, session) {
     output$message <- renderUI(if (is.null(display$rows())) div(class = "alert alert-warning", UNAVAILABLE))
     output$plot <- plotly::renderPlotly({
-      d <- side_filter(display$rows(), sel$state()$side); req(d, nrow(d) > 0)
       s <- sel$state()
+      if (identical(input$view, "all")) {
+        p <- outputs$pitchers
+        seasons <- sort(unique(p$season[p$pitcher == s$pitcher & p$level == s$level]))
+        d <- shiny::withProgress(message = "Loading every season", career_display(cfg, s$level, seasons, s$pitcher, cache))
+        d <- side_filter(d, s$side); req(d, nrow(d) > 0)
+        return(movement_animation(d, outputs$pctl, s$level))
+      }
+      d <- side_filter(display$rows(), s$side); req(d, nrow(d) > 0)
       movement_plot(d, outputs$movement_ref, outputs$pctl, s$level, s$season, corrected_uids(d, display$edits()))
     })
   })

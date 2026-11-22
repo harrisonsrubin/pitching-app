@@ -167,3 +167,13 @@ fetch_display <- function(cfg, level, season, pitcher, cache) {
   if (is.null(b)) return(NULL)
   b[b$pitcher == pitcher, ]
 }
+
+# One pitcher's pitches across seasons with a season column, or NULL if none load
+career_display <- function(cfg, level, seasons, pitcher, cache) {
+  d <- lapply(seasons, function(y) {
+    r <- fetch_display(cfg, level, y, pitcher, cache)
+    if (is.null(r) || nrow(r) == 0) NULL else dplyr::mutate(r, season = as.integer(y))
+  })
+  d <- dplyr::bind_rows(d)
+  if (nrow(d) == 0) NULL else d
+}

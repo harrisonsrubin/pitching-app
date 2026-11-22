@@ -44,7 +44,7 @@ test_that("NULL display shows the message", {
   o <- plot_fx()
   sel <- list(state = shiny::reactive(list(level = "MLB", season = 2026L, pitcher = 101L, side = "All", scale = "type", min_pitches = 0)))
   display <- list(rows = shiny::reactive(NULL), edits = shiny::reactiveVal(NULL))
-  shiny::testServer(movementServer, args = list(outputs = o, sel = sel, display = display), {
+  shiny::testServer(movementServer, args = list(outputs = o, sel = sel, display = display, cfg = app_config(), cache = bucket_cache()), {
     expect_match(output$message$html, "Pitch data unavailable")
   })
   shiny::testServer(locationServer, args = list(sel = sel, display = display), {

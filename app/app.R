@@ -33,7 +33,7 @@ server <- function(input, output, session) {
   display <- displayServer(cfg, sel, cache)
   gradesServer("grades", outputs, sel, display)
   projectionServer("projection", outputs, sel)
-  movementServer("movement", outputs, sel, display)
+  movementServer("movement", outputs, sel, display, cfg, cache)
   locationServer("location", sel, display)
   leaderboardServer("leaderboard", outputs, sel, session)
   projectionsServer("projections", outputs, sel, session)

@@ -91,3 +91,56 @@ test_that("the movement page switches to the animation for all seasons", {
     expect_false(grepl("\"frames\":\\[\\{", output$plot))
   })
 })
+
+# 2026 fixture plus a 2025 season where the busiest and the first-by-last-name pitchers differ
+sidebar_fx <- function() {
+  local_app_fixture(.frame = parent.frame())
+  o <- load_outputs(app_config())
+  y <- o$pitchers[o$pitchers$season == 2026L, ]
+  y$season <- 2025L; y$pitches <- c(100L, 900L, 50L)  # 101 One, 102 Two (busiest), 103 Pitch
+  o$pitchers <- dplyr::bind_rows(o$pitchers, y)
+  o
+}
+
+test_that("the pitcher list defaults to the first name by last name, not the busiest", {
+  o <- sidebar_fx()
+  picked <- new.env(); picked$sel <- NULL
+  local_global_binding(set_pitcher_choices = function(session, p, selected) picked$sel <- selected)
+  shiny::testServer(sidebarServer, args = list(outputs = o), {
+    session$setInputs(level = "MLB", season = "2025", team = "All")
+    session$flushReact()
+    expect_equal(picked$sel, 101L)
+  })
+})
+
+test_that("a season pill keeps the same pitcher even if the dropdown clears while it reloads", {
+  o <- sidebar_fx()
+  picked <- new.env(); picked$sel <- NULL
+  local_global_binding(set_pitcher_choices = function(session, p, selected) picked$sel <- selected)
+  shiny::testServer(sidebarServer, args = list(outputs = o), {
+    session$setInputs(level = "MLB", season = "2026", team = "All", pitcher = "103")
+    session$flushReact()
+    session$returned$select("MLB", 2025L, 103L)
+    session$flushReact()
+    session$setInputs(pitcher = "")  # server-side selectize empties while its choices reload
+    session$setInputs(season = "2025")
+    session$flushReact()
+    expect_equal(picked$sel, 103L)
+  })
+})
+
+test_that("a jump to a season that doesn't exist leaves the sidebar working", {
+  o <- sidebar_fx()
+  picked <- new.env(); picked$sel <- NULL
+  local_global_binding(set_pitcher_choices = function(session, p, selected) picked$sel <- selected)
+  shiny::testServer(sidebarServer, args = list(outputs = o), {
+    session$setInputs(level = "MLB", season = "2026", team = "All", pitcher = "103")
+    session$flushReact()
+    session$returned$select("MLB", 2019L, 103L)
+    session$flushReact()
+    picked$sel <- NULL
+    session$setInputs(season = "2025")
+    session$flushReact()
+    expect_equal(picked$sel, 103L)
+  })
+})

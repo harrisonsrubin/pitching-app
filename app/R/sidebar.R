@@ -85,18 +85,21 @@ sidebarServer <- function(id, outputs) {
     # Refill pitchers on any selection change or jump
     observeEvent(list(input$level, input$season, input$team, jump()), {
       req(input$season, input$team)
+      t <- pending()
+      # A jump waits until its level and season reach the dropdowns
+      if (!is.null(t) && (!identical(t$level, input$level) || !identical(t$season, as.integer(input$season)))) return()
       p <- pitchers_for(outputs$pitchers, input$level, as.integer(input$season), input$team)
-      want <- pending()$pitcher
+      want <- t$pitcher
       if (!is.null(want) && !(want %in% p$pitcher)) {
-        if (identical(pending()$season, as.integer(input$season)) && !identical(input$team, "All")) return()
-        if (!identical(pending()$season, as.integer(input$season))) return()  # season update still coming
+        if (!identical(input$team, "All")) return()  # team reset still coming
+        target <<- NULL; want <- NULL  # pitcher not in that season
       }
       current <- suppressWarnings(as.integer(input$pitcher))
-      sel <- if (!is.null(want) && want %in% p$pitcher) want
+      sel <- if (!is.null(want)) want
              else if (length(current) == 1 && !is.na(current) && current %in% p$pitcher) current  # keep current pitcher
-             else p$pitcher[which.max(p$pitches)]  # default: busiest pitcher
+             else p$pitcher[1]  # default: first by last name
       set_pitcher_choices(session, p, sel)
-      if (!is.null(want) && want %in% p$pitcher) target <<- NULL
+      if (!is.null(want)) target <<- NULL
     }, ignoreNULL = FALSE)
     state <- reactive({
       req(input$pitcher, input$season)
@@ -105,7 +108,8 @@ sidebarServer <- function(id, outputs) {
     })
     # Jump to a pitcher from another page
     select <- function(level, season, pitcher) {
-      target <<- list(season = as.integer(season), pitcher = as.integer(pitcher))
+      if (!(as.integer(season) %in% seasons_for(outputs$pitchers, level))) return(invisible())  # no such season
+      target <<- list(level = level, season = as.integer(season), pitcher = as.integer(pitcher))
       jump(jump() + 1L)
       updateSelectInput(session, "level", selected = level)
       updateSelectInput(session, "season", selected = season)
